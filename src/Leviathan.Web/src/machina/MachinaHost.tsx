@@ -7,6 +7,15 @@ import type { DispatchFn, LeviathanDispatch, ShellState } from "./types";
 import { commandForEvent, runShellCommand } from "./shellCommands";
 import { reduceShellState } from "./shellDispatch";
 import { createInitialShellState } from "./shellState";
+import {
+  createDebugSnapshot,
+  debugFlagFromLocation,
+  DispatchHistoryBuffer,
+  inspectLayout,
+  inspectPromptMapping,
+  setDebugInspectorEnabled,
+  summarizeShellState,
+} from "./debugInspector";
 import { viewRegistry } from "./views";
 
 const viewport = (): Rect => ({
@@ -20,6 +29,9 @@ export function MachinaHost() {
   const [state, setState] = useState<ShellState>(() => createInitialShellState(initialRouteFromLocation(window.location)));
   const stateRef = useRef(state);
   const [rootRect, setRootRect] = useState<Rect>(viewport);
+  const [debugEnabled, setDebugEnabled] = useState(() => debugFlagFromLocation(window.location, window.localStorage));
+  const [inspectorOpen, setInspectorOpen] = useState(() => debugFlagFromLocation(window.location, window.localStorage));
+  const historyRef = useRef(new DispatchHistoryBuffer());
 
   useEffect(() => {
     stateRef.current = state;
@@ -34,6 +46,7 @@ export function MachinaHost() {
   }, []);
 
   const dispatch = useCallback<DispatchFn>((event: LeviathanDispatch) => {
+    historyRef.current.record(event);
     setState((current) => {
       const next = reduceShellState(current, event);
       stateRef.current = next;
@@ -54,18 +67,44 @@ export function MachinaHost() {
     );
   }, [dispatch]);
 
-  const doc = state.route === "rust-simulator" ? buildRustSimulatorLayout(rootRect, state) : buildAppsLayout(rootRect);
-  const viewData = { ...doc.viewData, appList: { apps: state.apps, error: state.error, status: state.status } };
+  const doc = state.route === "rust-simulator" ? buildRustSimulatorLayout(rootRect, state, debugEnabled && inspectorOpen) : buildAppsLayout(rootRect, debugEnabled && inspectorOpen);
   const layout = useMemo(() => resolveLayoutRows(doc.rows, rootRect), [doc.rows, rootRect]);
+  const layoutNodes = useMemo(() => inspectLayout(layout), [layout]);
+  const recentEvents = historyRef.current.snapshot();
+  const snapshot = useMemo(() => createDebugSnapshot(state, layoutNodes, recentEvents), [state, layoutNodes, recentEvents]);
+  const debugInspector = {
+    enabled: debugEnabled,
+    open: inspectorOpen,
+    shellSummary: summarizeShellState(state),
+    fullState: state,
+    layoutNodes,
+    recentEvents,
+    promptMapping: inspectPromptMapping(state),
+    snapshot,
+    toggleOpen: () => setInspectorOpen((open) => !open),
+    disable: () => {
+      setDebugInspectorEnabled(window.localStorage, false);
+      setDebugEnabled(false);
+      setInspectorOpen(false);
+    },
+  };
+  const viewData = { ...doc.viewData, appList: { apps: state.apps, error: state.error, status: state.status }, debugInspector };
   const nodeData = useMemo(() => Object.fromEntries(Object.keys(layout.nodes).map((id) => [id, { dispatch }])), [layout.nodes, dispatch]);
 
   return (
-    <MachinaReactView
+    <>
+      {debugEnabled && (
+        <button className="inspector-toggle" onClick={() => setInspectorOpen((open) => !open)}>
+          Inspector {inspectorOpen ? "−" : "+"}
+        </button>
+      )}
+      <MachinaReactView
       className="machina-shell"
       layout={layout}
       views={viewRegistry as any}
       viewData={viewData}
       nodeData={nodeData}
-    />
+      />
+    </>
   );
 }

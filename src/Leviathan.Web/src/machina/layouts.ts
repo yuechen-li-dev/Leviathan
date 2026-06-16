@@ -20,6 +20,7 @@ export type LeviathanViewData = {
     screen: AriadneScreenDto | null;
     status: ShellState["status"];
   };
+  debugInspector?: unknown;
 };
 
 const root = (rootRect: Rect): LayoutRow => ({
@@ -29,7 +30,7 @@ const root = (rootRect: Rect): LayoutRow => ({
   debugLabel: `Leviathan shell ${rootRect.width}x${rootRect.height}`,
 });
 
-export function buildAppsLayout(rootRect: Rect): {
+export function buildAppsLayout(rootRect: Rect, inspectorEnabled = false): {
   rows: LayoutRow[];
   viewData: LeviathanViewData;
 } {
@@ -50,6 +51,17 @@ export function buildAppsLayout(rootRect: Rect): {
         view: "appList",
         debugLabel: "Apps list",
       },
+      ...(inspectorEnabled
+        ? [
+            {
+              id: "debug-inspector",
+              parent: "root",
+              frame: { kind: "fixed" as const, width: rootRect.width, height: Math.min(300, Math.max(220, rootRect.height * 0.34)) },
+              view: "debugInspector",
+              debugLabel: "M2 debug layout/state inspector",
+            },
+          ]
+        : []),
     ],
     viewData: {
       appsHeader: {
@@ -63,6 +75,7 @@ export function buildAppsLayout(rootRect: Rect): {
 export function buildRustSimulatorLayout(
   rootRect: Rect,
   state: ShellState,
+  inspectorEnabled = false,
 ): { rows: LayoutRow[]; viewData: LeviathanViewData } {
   const wide = rootRect.width >= 860;
   const contentHeight = Math.max(360, rootRect.height - 76);
@@ -122,6 +135,17 @@ export function buildRustSimulatorLayout(
         view: "debugPanel",
         debugLabel: "Session debug",
       },
+      ...(inspectorEnabled
+        ? [
+            {
+              id: "debug-inspector",
+              parent: "root",
+              frame: { kind: "fixed" as const, width: rootRect.width, height: Math.min(320, Math.max(230, rootRect.height * 0.36)) },
+              view: "debugInspector",
+              debugLabel: "M2 debug layout/state inspector",
+            },
+          ]
+        : []),
     ],
     viewData: {
       navBar: { route: state.route, status: state.status },

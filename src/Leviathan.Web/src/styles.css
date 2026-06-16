@@ -121,3 +121,47 @@ input {
 .complete {
   color: #8affb1;
 }
+
+.inspector-toggle {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 1000;
+}
+
+.inspector {
+  overflow: auto;
+  font-size: 12px;
+}
+
+.inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inspector-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.inspector pre,
+.inspector textarea {
+  max-height: 140px;
+  overflow: auto;
+  width: 100%;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+}
+
+.inspector textarea {
+  min-height: 150px;
+}
+
+.inspector-table {
+  max-height: 140px;
+  overflow: auto;
+  font-family: monospace;
+}

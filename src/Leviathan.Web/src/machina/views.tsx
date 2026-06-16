@@ -161,4 +161,64 @@ export const viewRegistry = {
   transcript: TranscriptView,
   prompt: PromptView,
   debugPanel: DebugPanelView,
+  debugInspector: DebugInspectorView,
 };
+
+type DebugInspectorData = {
+  shellSummary: unknown;
+  fullState: unknown;
+  layoutNodes: Array<{ id: string; debugLabel?: string; viewKey?: string; parentId?: string; rect: { x: number; y: number; width: number; height: number }; depth: number }>;
+  recentEvents: unknown[];
+  promptMapping?: unknown;
+  snapshot: unknown;
+  disable: () => void;
+};
+
+export function DebugInspectorView(props: SlotProps) {
+  const data = props.viewData as DebugInspectorData | undefined;
+  const json = JSON.stringify(data?.snapshot ?? {}, null, 2);
+  const copy = async () => {
+    if (navigator.clipboard) await navigator.clipboard.writeText(json);
+  };
+
+  return (
+    <section className="panel inspector">
+      <div className="inspector-head">
+        <h2>Leviathan M2 Inspector</h2>
+        <div>
+          <button onClick={copy}>Copy snapshot</button>
+          <button onClick={() => data?.disable()}>Disable</button>
+        </div>
+      </div>
+      <div className="inspector-grid">
+        <section>
+          <h3>Shell state</h3>
+          <pre>{JSON.stringify(data?.shellSummary, null, 2)}</pre>
+        </section>
+        <section>
+          <h3>Layout nodes</h3>
+          <div className="inspector-table">
+            {data?.layoutNodes.map((node) => (
+              <div key={node.id} style={{ paddingLeft: node.depth * 10 }}>
+                <code>{node.id}</code> {node.debugLabel} view={node.viewKey ?? "none"} parent={node.parentId ?? "none"} rect={Math.round(node.rect.x)},{Math.round(node.rect.y)} {Math.round(node.rect.width)}×{Math.round(node.rect.height)}
+              </div>
+            ))}
+          </div>
+        </section>
+        <section>
+          <h3>Recent dispatch</h3>
+          <pre>{JSON.stringify(data?.recentEvents, null, 2)}</pre>
+        </section>
+        <section>
+          <h3>Ariadne mapping</h3>
+          <pre>{JSON.stringify(data?.promptMapping ?? null, null, 2)}</pre>
+        </section>
+      </div>
+      <details>
+        <summary>Compact diagnostic snapshot / full shell state</summary>
+        <textarea readOnly value={json} />
+        <pre>{JSON.stringify(data?.fullState, null, 2)}</pre>
+      </details>
+    </section>
+  );
+}
