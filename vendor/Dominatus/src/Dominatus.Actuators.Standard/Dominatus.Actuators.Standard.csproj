@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <PackageId>Dominatus.Actuators.Standard</PackageId>
+    <Version>0.2.2</Version>
+    <Authors>Yuechen Li</Authors>
+    <Description>Standard actuator pack for Dominatus. Provides sandboxed file text, wall-clock time, calendar, HTTP, process, HTTP WebSafety, and WebContentSafety helpers behind typed Dominatus actuation boundaries.</Description>
+    <PackageTags>ai;agent;actuator;automation;files;time;http;web-safety;dominatus</PackageTags>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/yuechen-li-dev/Dominatus</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/yuechen-li-dev/Dominatus</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>Adds HTTP WebSafety policy hardening and WebContentSafety prompt-injection/content filtering helpers while retaining standard file, time, calendar, HTTP, and process actuators.</PackageReleaseNotes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dominatus.Core\Dominatus.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" Link="README.md" />
+  </ItemGroup>
+</Project>
