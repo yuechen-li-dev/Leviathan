@@ -26,34 +26,5 @@ export type AriadneScreenDto = {
   prompt: AriadnePromptDto | null;
 };
 
-export type ShellRoute = "apps" | "rust-simulator";
-export type ShellState = {
-  route: ShellRoute;
-  apps: AppManifest[];
-  screen: AriadneScreenDto | null;
-  status: "idle" | "loading-apps" | "starting-session" | "submitting" | "error";
-  error: string | null;
-  textInput: string;
-};
-
-export type LeviathanDispatch =
-  | { type: "open-apps-list" }
-  | { type: "open-rust-simulator-app" }
-  | { type: "start-ariadne-session"; appId: "rust_simulator" }
-  | { type: "open-ariadne-session"; screen: AriadneScreenDto }
-  | { type: "advance-prompt"; promptId: string; revision: number }
-  | {
-      type: "choose-option";
-      promptId: string;
-      revision: number;
-      choiceKey: string;
-    }
-  | { type: "set-text-input"; text: string }
-  | {
-      type: "submit-text-input";
-      promptId: string;
-      revision: number;
-      text: string;
-    };
-
-export type DispatchFn = (event: LeviathanDispatch) => void;
+export type { ShellRoute, ShellState, ShellStatus } from "./shellState";
+export type { DispatchFn, LeviathanDispatch } from "./shellEvents";
