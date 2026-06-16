@@ -4,6 +4,12 @@
 
 Machina owns the frontend shell geometry, screen structure, and navigation intent dispatch. React is retained as an adapter for slot content, styling, and controls rendered inside Machina rectangles. CSS may set typography, colors, borders, padding, and local control affordances, but it must not become the primary app-shell layout authority.
 
+## M1a dependency boundary clarification
+
+Vendored source under `vendor/Dominatus` and `vendor/MachinaLayout.JS` is reference/documentation source only. Leviathan should consume published packages whenever they exist: Dominatus/Ariadne runtime packages from NuGet and MachinaLayout from npm. Temporary fallbacks must be documented with the exact missing package and the smallest workaround.
+
+For the frontend shell, Machina owns layout rows, text rendering primitives, and dispatch intent. React owns component rendering and styling inside Machina slots. CSS must not own app-shell layout or responsive shell breakpoints. Browser URL/history mirrors shell state for navigation ergonomics, but dispatch state remains the conceptual routing owner.
+
 ## Dispatch flow
 
 View slots emit typed `LeviathanDispatch` events such as `open-apps-list`, `open-rust-simulator-app`, `advance-prompt`, `choose-option`, and `submit-text-input`. `MachinaHost` handles those events, calls the existing Minimal API, updates shell state, and mirrors dispatch-owned navigation into browser history.
