@@ -4,9 +4,15 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+
   <ItemGroup>
-    <ProjectReference Include="../../vendor/Dominatus/src/Dominatus.Core/Dominatus.Core.csproj" />
-    <ProjectReference Include="../../vendor/Dominatus/src/Ariadne.OptFlow/Ariadne.OptFlow.csproj" />
-    <ProjectReference Include="../../vendor/Dominatus/src/Ariadne.Console/Ariadne.ConsoleApp.csproj" />
+    <PackageReference Include="Dominatus.Core" Version="0.2.1" />
+    <PackageReference Include="Dominatus.OptFlow" Version="0.2.1" />
+    <PackageReference Include="Ariadne.OptFlow" Version="0.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- TODO(M1b): Replace this temporary linked source when RustSimulator is published in a host-neutral Ariadne package. NuGet has Dominatus.Core/Dominatus.OptFlow/Ariadne.OptFlow 0.2.1, but no Ariadne.Console or Ariadne.ConsoleApp package. -->
+    <Compile Include="../../vendor/Dominatus/src/Ariadne.Console/Scripts/RustSimulator.cs" Link="Ariadne/VendoredReference/RustSimulator.cs" />
   </ItemGroup>
 </Project>

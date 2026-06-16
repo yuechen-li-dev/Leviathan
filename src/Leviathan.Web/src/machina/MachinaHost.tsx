@@ -1,73 +1,110 @@
-import type React from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { resolveLayoutRows, type Rect } from '@machina/index';
-import { MachinaReactView } from '@machina/react';
-import { api } from './api';
-import { buildAppsLayout, buildRustSimulatorLayout } from './layouts';
-import type { AppManifest, AriadneScreenDto, DispatchFn, LeviathanDispatch, ShellState } from './types';
-import { viewRegistry } from './views';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { resolveLayoutRows, type Rect } from "machinalayout";
+import { MachinaReactView } from "machinalayout/react";
+import { attachPopstateRouteAdapter, initialRouteFromLocation, mirrorRouteToHistory, replaceUnknownRoute } from "./browserHistoryAdapter";
+import { buildAppsLayout, buildRustSimulatorLayout } from "./layouts";
+import type { DispatchFn, LeviathanDispatch, ShellState } from "./types";
+import { commandForEvent, runShellCommand } from "./shellCommands";
+import { reduceShellState } from "./shellDispatch";
+import { createInitialShellState } from "./shellState";
+import {
+  createDebugSnapshot,
+  debugFlagFromLocation,
+  DispatchHistoryBuffer,
+  inspectLayout,
+  inspectPromptMapping,
+  setDebugInspectorEnabled,
+  summarizeShellState,
+} from "./debugInspector";
+import { viewRegistry } from "./views";
 
-const initialRoute = (): ShellState['route'] => location.pathname.startsWith('/apps/rust-simulator') ? 'rust-simulator' : 'apps';
-const initialState = (): ShellState => ({ route: initialRoute(), apps: [], screen: null, status: 'idle', error: null, textInput: '' });
-const viewport = (): Rect => ({ x: 0, y: 0, width: Math.max(320, window.innerWidth), height: Math.max(480, window.innerHeight) });
+const viewport = (): Rect => ({
+  x: 0,
+  y: 0,
+  width: Math.max(320, window.innerWidth),
+  height: Math.max(480, window.innerHeight),
+});
 
 export function MachinaHost() {
-  const [state, setState] = useState<ShellState>(initialState);
+  const [state, setState] = useState<ShellState>(() => createInitialShellState(initialRouteFromLocation(window.location)));
+  const stateRef = useRef(state);
   const [rootRect, setRootRect] = useState<Rect>(viewport);
+  const [debugEnabled, setDebugEnabled] = useState(() => debugFlagFromLocation(window.location, window.localStorage));
+  const [inspectorOpen, setInspectorOpen] = useState(() => debugFlagFromLocation(window.location, window.localStorage));
+  const historyRef = useRef(new DispatchHistoryBuffer());
 
   useEffect(() => {
+    stateRef.current = state;
+    mirrorRouteToHistory(state);
+  }, [state]);
+
+  useEffect(() => {
+    replaceUnknownRoute();
     const onResize = () => setRootRect(viewport());
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const dispatch = useCallback<DispatchFn>((event) => {
-    void handleDispatch(event, setState);
+  const dispatch = useCallback<DispatchFn>((event: LeviathanDispatch) => {
+    historyRef.current.record(event);
+    setState((current) => {
+      const next = reduceShellState(current, event);
+      stateRef.current = next;
+      return next;
+    });
+    if (commandForEvent(event)) {
+      void runShellCommand(event, () => stateRef.current, dispatch);
+    }
   }, []);
+
+  useEffect(() => attachPopstateRouteAdapter(dispatch), [dispatch]);
 
   useEffect(() => {
-    dispatch(state.route === 'rust-simulator' ? { type: 'start-ariadne-session', appId: 'rust_simulator' } : { type: 'open-apps-list' });
-    // initial boot only; subsequent navigation flows through dispatch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    dispatch(
+      stateRef.current.route === "rust-simulator"
+        ? { type: "open-rust-simulator-app", source: "boot" }
+        : { type: "open-apps-list", source: "boot" },
+    );
+  }, [dispatch]);
 
-  const doc = state.route === 'rust-simulator' ? buildRustSimulatorLayout(rootRect, state) : buildAppsLayout(rootRect);
-  const viewData = { ...doc.viewData, appList: { apps: state.apps, error: state.error, status: state.status } };
+  const doc = state.route === "rust-simulator" ? buildRustSimulatorLayout(rootRect, state, debugEnabled && inspectorOpen) : buildAppsLayout(rootRect, debugEnabled && inspectorOpen);
   const layout = useMemo(() => resolveLayoutRows(doc.rows, rootRect), [doc.rows, rootRect]);
-  const nodeData = useMemo(() => Object.fromEntries(Object.keys(layout.nodes).map(id => [id, { dispatch }])), [layout.nodes, dispatch]);
-
-  return <MachinaReactView className="machina-shell" layout={layout} views={viewRegistry as any} viewData={viewData} nodeData={nodeData} />;
-}
-
-async function handleDispatch(event: LeviathanDispatch, setState: React.Dispatch<React.SetStateAction<ShellState>>) {
-  if (event.type === 'set-text-input') return setState(s => ({ ...s, textInput: event.text }));
-  if (event.type === 'open-apps-list') {
-    history.pushState(null, '', '/apps');
-    setState(s => ({ ...s, route: 'apps', status: 'loading-apps', error: null }));
-    try { const apps = await api<AppManifest[]>('/api/apps'); setState(s => ({ ...s, apps, status: 'idle' })); }
-    catch (e) { setState(s => ({ ...s, status: 'error', error: String(e) })); }
-    return;
-  }
-  if (event.type === 'open-rust-simulator-app') {
-    history.pushState(null, '', '/apps/rust-simulator');
-    setState(s => ({ ...s, route: 'rust-simulator', screen: null, status: 'starting-session', error: null }));
-    return handleDispatch({ type: 'start-ariadne-session', appId: 'rust_simulator' }, setState);
-  }
-  if (event.type === 'start-ariadne-session') {
-    setState(s => ({ ...s, route: 'rust-simulator', status: 'starting-session', error: null }));
-    try { const r = await api<{ sessionId: string; screen: AriadneScreenDto }>('/api/ariadne/sessions', { method: 'POST', body: JSON.stringify({ appId: event.appId }) }); setState(s => ({ ...s, screen: r.screen, status: 'idle' })); }
-    catch (e) { setState(s => ({ ...s, status: 'error', error: String(e) })); }
-    return;
-  }
-  const post = async (path: string, body: object) => {
-    let sessionId: string | null = null;
-    setState(s => { sessionId = s.screen?.sessionId ?? null; return { ...s, status: 'submitting', error: null }; });
-    if (!sessionId) return;
-    try { const screen = await api<AriadneScreenDto>(`/api/ariadne/sessions/${sessionId}/${path}`, { method: 'POST', body: JSON.stringify(body) }); setState(s => ({ ...s, screen, status: 'idle', textInput: path === 'input' ? '' : s.textInput })); }
-    catch (e) { setState(s => ({ ...s, status: 'error', error: String(e) })); }
+  const layoutNodes = useMemo(() => inspectLayout(layout), [layout]);
+  const recentEvents = historyRef.current.snapshot();
+  const snapshot = useMemo(() => createDebugSnapshot(state, layoutNodes, recentEvents), [state, layoutNodes, recentEvents]);
+  const debugInspector = {
+    enabled: debugEnabled,
+    open: inspectorOpen,
+    shellSummary: summarizeShellState(state),
+    fullState: state,
+    layoutNodes,
+    recentEvents,
+    promptMapping: inspectPromptMapping(state),
+    snapshot,
+    toggleOpen: () => setInspectorOpen((open) => !open),
+    disable: () => {
+      setDebugInspectorEnabled(window.localStorage, false);
+      setDebugEnabled(false);
+      setInspectorOpen(false);
+    },
   };
-  if (event.type === 'advance-prompt') return post('advance', { promptId: event.promptId, revision: event.revision });
-  if (event.type === 'choose-option') return post('choose', { promptId: event.promptId, revision: event.revision, choiceKey: event.choiceKey });
-  if (event.type === 'submit-text-input') return post('input', { promptId: event.promptId, revision: event.revision, text: event.text });
-  if (event.type === 'open-ariadne-session') return setState(s => ({ ...s, screen: event.screen, status: 'idle' }));
+  const viewData = { ...doc.viewData, appList: { apps: state.apps, error: state.error, status: state.status }, debugInspector };
+  const nodeData = useMemo(() => Object.fromEntries(Object.keys(layout.nodes).map((id) => [id, { dispatch }])), [layout.nodes, dispatch]);
+
+  return (
+    <>
+      {debugEnabled && (
+        <button className="inspector-toggle" onClick={() => setInspectorOpen((open) => !open)}>
+          Inspector {inspectorOpen ? "−" : "+"}
+        </button>
+      )}
+      <MachinaReactView
+      className="machina-shell"
+      layout={layout}
+      views={viewRegistry as any}
+      viewData={viewData}
+      nodeData={nodeData}
+      />
+    </>
+  );
 }

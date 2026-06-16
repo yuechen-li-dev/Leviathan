@@ -7,13 +7,13 @@ M0 adds two non-vendor projects:
 - `src/Leviathan.Server`: an ASP.NET Core Minimal API host for Ariadne sessions.
 - `src/Leviathan.Web`: a Vite + React + TypeScript browser client.
 
-The backend references the smallest practical vendored C# projects needed for real RustSimulator execution:
+M0 temporarily referenced the smallest practical vendored C# projects needed for real RustSimulator execution. M1a changes the intended boundary: vendor is reference-only, published NuGet/npm packages are the actual dependency path, and any remaining fallback must be documented as temporary:
 
 - `vendor/Dominatus/src/Dominatus.Core/Dominatus.Core.csproj`
 - `vendor/Dominatus/src/Ariadne.OptFlow/Ariadne.OptFlow.csproj`
 - `vendor/Dominatus/src/Ariadne.Console/Ariadne.ConsoleApp.csproj`
 
-`Ariadne.ConsoleApp.csproj` is referenced because `AdventureCatalog`, `AdventureDefinition`, and the authored `RustSimulator.Register` graph are currently located there. M0 does not modify vendor code and does not copy the RustSimulator script into Leviathan.
+`Ariadne.ConsoleApp.csproj` was referenced in M0 because `AdventureCatalog`, `AdventureDefinition`, and the authored `RustSimulator.Register` graph were located there. M1a removed that project reference; only the unpublished RustSimulator authored graph remains as a documented temporary linked-source fallback. M0/M1a do not modify vendor code.
 
 The key host seam is Dominatus actuation. Leviathan registers web handlers for:
 
@@ -99,7 +99,7 @@ Completes a free-text prompt.
 - No feeds, spaces, comments, federation, auth, payments, notifications, APK packaging, or social surface.
 - No live LLM calls.
 - No persistence: sessions are in memory and disappear when the backend exits.
-- No MachinaLayout integration yet; the M0 client uses plain React to keep the path small and stable.
+- M1 integrated MachinaLayout. From M1a onward, MachinaLayout is consumed as an npm package and vendor remains reference-only.
 - `Ariadne.ConsoleApp.csproj` is referenced even though it is an executable project because the current vendored tree keeps `RustSimulator` and `AdventureCatalog` there. This should be cleaned up in a later upstream/vendor boundary change rather than by editing vendor in M0.
 - Backend test automation was not added because the container lacks the .NET SDK, so C# compilation and test execution could not be verified here.
 
