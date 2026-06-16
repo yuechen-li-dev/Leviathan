@@ -1,7 +1,8 @@
 import type { MachinaSlotProps } from "machinalayout/react";
 import { MachinaTextView } from "machinalayout/text/react";
-import type { DispatchFn, ShellState } from "./types";
+import type { DispatchFn } from "./types";
 import type { LeviathanViewData } from "./layouts";
+import { mapPrompt } from "./ariadneMapping";
 
 type SlotProps = MachinaSlotProps<unknown, { dispatch: DispatchFn }>;
 const dispatchOf = (props: SlotProps) => props.nodeData?.dispatch;
@@ -93,7 +94,6 @@ export function PromptView(props: SlotProps) {
   const data = props.viewData as LeviathanViewData["prompt"];
   const dispatch = dispatchOf(props);
   const screen = data?.screen;
-  const prompt = screen?.prompt;
   if (!screen)
     return (
       <section className="panel">
@@ -101,61 +101,41 @@ export function PromptView(props: SlotProps) {
         {data?.error && <p className="error">{data.error}</p>}
       </section>
     );
+
+  const prompt = mapPrompt(screen);
   return (
     <section className="panel prompt">
-      <h2>{prompt?.text ?? "Continue"}</h2>
-      {prompt?.kind === "line" && (
-        <button
-          disabled={data?.status === "submitting"}
-          onClick={() =>
-            dispatch?.({
-              type: "advance-prompt",
-              promptId: prompt.id,
-              revision: screen.revision,
-            })
-          }
-        >
-          Advance
-        </button>
-      )}
-      {prompt?.kind === "choice" &&
-        prompt.choices.map((choice) => (
+      <h2>{prompt.title}</h2>
+      {prompt.actions.map((action) => {
+        if (action.kind === "text-input") {
+          return (
+            <form
+              key="text-input"
+              onSubmit={(e) => {
+                e.preventDefault();
+                dispatch?.(action.eventForText(data?.textInput ?? ""));
+              }}
+            >
+              <input
+                value={data?.textInput ?? ""}
+                onChange={(e) =>
+                  dispatch?.({ type: "set-text-input", text: e.target.value })
+                }
+              />
+              <button disabled={data?.status === "submitting"}>{action.label}</button>
+            </form>
+          );
+        }
+        return (
           <button
             disabled={data?.status === "submitting"}
-            key={choice.key}
-            onClick={() =>
-              dispatch?.({
-                type: "choose-option",
-                promptId: prompt.id,
-                revision: screen.revision,
-                choiceKey: choice.key,
-              })
-            }
+            key={action.kind === "choice" ? action.key : action.kind}
+            onClick={() => dispatch?.(action.event)}
           >
-            {choice.text}
+            {action.label}
           </button>
-        ))}
-      {prompt?.kind === "text-input" && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            dispatch?.({
-              type: "submit-text-input",
-              promptId: prompt.id,
-              revision: screen.revision,
-              text: data?.textInput ?? "",
-            });
-          }}
-        >
-          <input
-            value={data?.textInput ?? ""}
-            onChange={(e) =>
-              dispatch?.({ type: "set-text-input", text: e.target.value })
-            }
-          />
-          <button disabled={data?.status === "submitting"}>Submit</button>
-        </form>
-      )}
+        );
+      })}
       {data?.error && <p className="error">{data.error}</p>}
     </section>
   );
