@@ -1,4 +1,3 @@
-using Ariadne.ConsoleApp;
 using Dominatus.Core.Blackboard;
 using Dominatus.Core.Hfsm;
 using Dominatus.Core.Runtime;
