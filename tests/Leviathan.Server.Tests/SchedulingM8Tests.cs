@@ -318,6 +318,45 @@ public sealed class SchedulingM8Tests
         Assert.Equal("unsafe_admin_disabled", error!.Error);
     }
 
+
+    [Fact]
+    public async Task M15_capability_bootstrap_allows_admin_and_records_audit_decision()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+
+        var grants = await client.GetFromJsonAsync<System.Text.Json.JsonElement[]>("/api/platform/local-dev/capability-grants");
+        Assert.Contains(grants!, g => g.GetProperty("capabilityName").GetProperty("value").GetString() == "admin.provider.configure" && g.GetProperty("status").GetString() == "Enabled");
+
+        var response = await client.PostAsJsonAsync("/api/apps/scheduling/providers", new { slug = "m15-allowed", displayName = "Allowed", timeZoneId = "UTC", grantId = "grant_attacker", accountId = "acct_attacker" });
+        response.EnsureSuccessStatusCode();
+
+        var decisions = await client.GetFromJsonAsync<System.Text.Json.JsonElement[]>("/api/platform/local-dev/capability-decisions/recent");
+        var decision = Assert.Single(decisions!, d => d.GetProperty("operation").GetString() == "providers.create" && d.GetProperty("targetId").GetString() == "m15-allowed");
+        Assert.True(decision.GetProperty("allowed").GetBoolean());
+        Assert.Equal("grant_local_dev_scheduling_admin_provider_configure", decision.GetProperty("grantId").GetString());
+        Assert.Equal("admin.provider.configure", decision.GetProperty("capability").GetString());
+    }
+
+    [Fact]
+    public async Task M15_provider_creation_denied_when_capability_grant_missing_but_public_lookup_remains_open()
+    {
+        using var fixture = new LeviathanFactory(bootstrapCapabilities: false);
+        var client = fixture.CreateClient();
+        var publicProvider = new Provider(new ProviderId("prov_public_m15"), "m15-public", "Public", "UTC", null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        await WriteProviderJson(fixture.DataDir, publicProvider);
+
+        var response = await client.PostAsJsonAsync("/api/apps/scheduling/providers", new CreateProviderRequest("m15-denied", "Denied", "UTC", null, null));
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("capability_denied", body.GetProperty("error").GetString());
+        Assert.Equal("capability_grant_missing", body.GetProperty("reason").GetString());
+        Assert.False(body.GetProperty("audit").GetProperty("allowed").GetBoolean());
+
+        var publicFetch = await client.GetFromJsonAsync<Provider>("/api/apps/scheduling/public/m15-public");
+        Assert.Equal("prov_public_m15", publicFetch!.Id.Value);
+    }
+
     private static async Task<(string ProviderId, string ServiceId, string ResourceId, string? SecondResourceId)> CreateSetup(HttpClient client, string slug, bool twoResources, string timeZone = "UTC")
     {
         var provider = (await (await client.PostAsJsonAsync("/api/apps/scheduling/providers", new CreateProviderRequest(slug, "M8 Demo", timeZone, null, null))).Content.ReadFromJsonAsync<Provider>())!;
@@ -357,7 +396,12 @@ public sealed class SchedulingM8Tests
     {
         public string DataDir { get; } = Path.Combine(Path.GetTempPath(), "leviathan-tests", Guid.NewGuid().ToString("n"));
         private readonly bool _allowUnsafeAdmin;
-        public LeviathanFactory(bool allowUnsafeAdmin = true) => _allowUnsafeAdmin = allowUnsafeAdmin;
-        protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder) => builder.UseSetting("LEVIATHAN_DATA_DIR", DataDir).UseSetting("LEVIATHAN_ALLOW_UNSAFE_ADMIN", _allowUnsafeAdmin ? "true" : "false");
+        private readonly bool _bootstrapCapabilities;
+        public LeviathanFactory(bool allowUnsafeAdmin = true, bool bootstrapCapabilities = true)
+        {
+            _allowUnsafeAdmin = allowUnsafeAdmin;
+            _bootstrapCapabilities = bootstrapCapabilities;
+        }
+        protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder) => builder.UseSetting("LEVIATHAN_DATA_DIR", DataDir).UseSetting("LEVIATHAN_ALLOW_UNSAFE_ADMIN", _allowUnsafeAdmin ? "true" : "false").UseSetting("LEVIATHAN_LOCAL_DEV_BOOTSTRAP_CAPABILITIES", _bootstrapCapabilities ? "true" : "false");
     }
 }
