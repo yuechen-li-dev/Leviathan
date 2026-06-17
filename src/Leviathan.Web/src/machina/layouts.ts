@@ -78,14 +78,17 @@ export function buildRustSimulatorLayout(
   inspectorEnabled = false,
 ): { rows: LayoutRow[]; viewData: LeviathanViewData } {
   const wide = rootRect.width >= 860;
-  const contentHeight = Math.max(360, rootRect.height - 76);
+  const navHeight = rootRect.width >= 640 ? 76 : 96;
+  const contentHeight = Math.max(360, rootRect.height - navHeight);
+  const narrowPanelHeight = Math.min(360, Math.max(300, Math.round(rootRect.height * 0.42)));
+  const sidePanelWidth = Math.max(288, rootRect.width - 32);
   return {
     rows: [
       root(rootRect),
       {
         id: "nav-bar",
         parent: "root",
-        frame: { kind: "fixed", width: rootRect.width, height: 76 },
+        frame: { kind: "fixed", width: rootRect.width, height: navHeight },
         view: "navBar",
         debugLabel: "Navigation dispatch bar",
       },
@@ -113,7 +116,7 @@ export function buildRustSimulatorLayout(
         parent: "rust-content",
         frame: wide
           ? { kind: "fixed", width: 360, height: contentHeight - 32 }
-          : { kind: "fixed", width: rootRect.width - 32, height: 292 },
+          : { kind: "fixed", width: sidePanelWidth, height: narrowPanelHeight },
         arrange: { kind: "stack", axis: "vertical", gap: 12 },
         debugLabel: "Prompt and debug",
       },
@@ -129,8 +132,8 @@ export function buildRustSimulatorLayout(
         parent: "side-panel",
         frame: {
           kind: "fixed",
-          width: wide ? 360 : rootRect.width - 32,
-          height: 116,
+          width: wide ? 360 : sidePanelWidth,
+          height: wide ? 116 : 104,
         },
         view: "debugPanel",
         debugLabel: "Session debug",

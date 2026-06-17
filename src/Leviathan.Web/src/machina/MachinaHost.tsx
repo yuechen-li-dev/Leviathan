@@ -16,6 +16,7 @@ import {
   setDebugInspectorEnabled,
   summarizeShellState,
 } from "./debugInspector";
+import { resolveApiBaseUrl } from "./apiConfig";
 import { viewRegistry } from "./views";
 
 const viewport = (): Rect => ({
@@ -71,10 +72,12 @@ export function MachinaHost() {
   const layout = useMemo(() => resolveLayoutRows(doc.rows, rootRect), [doc.rows, rootRect]);
   const layoutNodes = useMemo(() => inspectLayout(layout), [layout]);
   const recentEvents = historyRef.current.snapshot();
-  const snapshot = useMemo(() => createDebugSnapshot(state, layoutNodes, recentEvents), [state, layoutNodes, recentEvents]);
+  const apiBaseUrl = resolveApiBaseUrl();
+  const snapshot = useMemo(() => createDebugSnapshot(state, layoutNodes, recentEvents, apiBaseUrl), [state, layoutNodes, recentEvents, apiBaseUrl]);
   const debugInspector = {
     enabled: debugEnabled,
     open: inspectorOpen,
+    apiBaseUrl,
     shellSummary: summarizeShellState(state),
     fullState: state,
     layoutNodes,

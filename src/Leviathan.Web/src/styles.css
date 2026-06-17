@@ -13,6 +13,9 @@ body {
   min-height: 100vh;
   background: radial-gradient(circle at top left, #1b2a3d, #0c0f14 42rem);
 }
+#root {
+  min-height: 100vh;
+}
 button,
 input {
   font: inherit;
@@ -20,6 +23,7 @@ input {
 button {
   margin: 0.35rem 0.35rem 0.35rem 0;
   padding: 0.62rem 0.85rem;
+  min-height: 44px;
   border: 1px solid #526277;
   border-radius: 10px;
   background: #243244;
@@ -35,6 +39,7 @@ button:disabled {
 }
 input {
   width: min(100%, 22rem);
+  min-height: 44px;
   padding: 0.65rem;
   border: 1px solid #526277;
   border-radius: 10px;
@@ -82,11 +87,13 @@ input {
   border-left: 0;
   border-right: 0;
   border-top: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
 }
 .nav > div {
-  display: inline-block;
-  vertical-align: middle;
-  margin-left: 0.8rem;
+  min-width: 0;
 }
 .nav h1 {
   margin: 0;
@@ -104,6 +111,15 @@ input {
 }
 .prompt h2 {
   margin-top: 0;
+}
+.prompt-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+.prompt-form input {
+  width: 100%;
 }
 .debug {
   width: 100%;
@@ -164,4 +180,40 @@ input {
   max-height: 140px;
   overflow: auto;
   font-family: monospace;
+}
+
+@media (max-width: 900px) {
+  .inspector-grid {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .panel,
+  .hero {
+    padding: 0.85rem;
+  }
+
+  .nav {
+    align-items: flex-start;
+  }
+
+  .nav > div {
+    width: 100%;
+  }
+
+  .inspector-toggle {
+    top: 10px;
+    right: 10px;
+  }
+
+  .inspector-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inspector pre,
+  .inspector textarea,
+  .inspector-table {
+    max-height: 180px;
+  }
 }

@@ -27,7 +27,7 @@ export async function runShellCommand(
 ) {
   try {
     if (event.type === "open-apps-list") {
-      const apps = await deps.request<AppManifest[]>("/api/apps");
+      const apps = await deps.request<AppManifest[]>("/apps");
       dispatch({ type: "apps-load-succeeded", apps });
       return;
     }
@@ -36,7 +36,7 @@ export async function runShellCommand(
       return;
     }
     if (event.type === "start-ariadne-session") {
-      const r = await deps.request<{ sessionId: string; screen: AriadneScreenDto }>("/api/ariadne/sessions", {
+      const r = await deps.request<{ sessionId: string; screen: AriadneScreenDto }>("/ariadne/sessions", {
         method: "POST",
         body: JSON.stringify({ appId: event.appId }),
       });
@@ -46,7 +46,7 @@ export async function runShellCommand(
     const sessionId = getState().screen?.sessionId;
     if (!sessionId) return;
     if (event.type === "advance-prompt") {
-      const screen = await deps.request<AriadneScreenDto>(`/api/ariadne/sessions/${sessionId}/advance`, {
+      const screen = await deps.request<AriadneScreenDto>(`/ariadne/sessions/${sessionId}/advance`, {
         method: "POST",
         body: JSON.stringify({ promptId: event.promptId, revision: event.revision }),
       });
@@ -54,7 +54,7 @@ export async function runShellCommand(
       return;
     }
     if (event.type === "choose-option") {
-      const screen = await deps.request<AriadneScreenDto>(`/api/ariadne/sessions/${sessionId}/choose`, {
+      const screen = await deps.request<AriadneScreenDto>(`/ariadne/sessions/${sessionId}/choose`, {
         method: "POST",
         body: JSON.stringify({ promptId: event.promptId, revision: event.revision, choiceKey: event.choiceKey }),
       });
@@ -62,7 +62,7 @@ export async function runShellCommand(
       return;
     }
     if (event.type === "submit-text-input") {
-      const screen = await deps.request<AriadneScreenDto>(`/api/ariadne/sessions/${sessionId}/input`, {
+      const screen = await deps.request<AriadneScreenDto>(`/ariadne/sessions/${sessionId}/input`, {
         method: "POST",
         body: JSON.stringify({ promptId: event.promptId, revision: event.revision, text: event.text }),
       });

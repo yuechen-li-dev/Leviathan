@@ -110,6 +110,7 @@ export function PromptView(props: SlotProps) {
         if (action.kind === "text-input") {
           return (
             <form
+              className="prompt-form"
               key="text-input"
               onSubmit={(e) => {
                 e.preventDefault();
@@ -165,6 +166,7 @@ export const viewRegistry = {
 };
 
 type DebugInspectorData = {
+  apiBaseUrl?: string;
   shellSummary: unknown;
   fullState: unknown;
   layoutNodes: Array<{ id: string; debugLabel?: string; viewKey?: string; parentId?: string; rect: { x: number; y: number; width: number; height: number }; depth: number }>;
@@ -190,6 +192,7 @@ export function DebugInspectorView(props: SlotProps) {
           <button onClick={() => data?.disable()}>Disable</button>
         </div>
       </div>
+      <p><strong>API base:</strong> <code>{data?.apiBaseUrl ?? "/api"}</code></p>
       <div className="inspector-grid">
         <section>
           <h3>Shell state</h3>

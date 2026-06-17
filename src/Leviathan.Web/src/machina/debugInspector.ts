@@ -26,6 +26,7 @@ export interface DispatchEventInspection {
 
 export interface LeviathanDebugSnapshot {
   generatedAt: string;
+  apiBaseUrl?: string;
   route: ShellState["route"];
   status: ShellState["status"];
   currentScreenSummary?: unknown;
@@ -166,9 +167,15 @@ export function summarizeScreen(screen: ShellState["screen"]): unknown {
   };
 }
 
-export function createDebugSnapshot(state: ShellState, layoutNodes: LayoutNodeInspection[], recentEvents: DispatchEventInspection[]): LeviathanDebugSnapshot {
+export function createDebugSnapshot(
+  state: ShellState,
+  layoutNodes: LayoutNodeInspection[],
+  recentEvents: DispatchEventInspection[],
+  apiBaseUrl?: string,
+): LeviathanDebugSnapshot {
   return {
     generatedAt: new Date().toISOString(),
+    apiBaseUrl,
     route: state.route,
     status: state.status,
     currentScreenSummary: summarizeScreen(state.screen),
