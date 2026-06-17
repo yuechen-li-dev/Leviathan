@@ -1,6 +1,6 @@
 namespace Leviathan.Server.Apps.Scheduling.Domain;
 
-public sealed record Provider(ProviderId Id, string Slug, string DisplayName, string TimeZoneId, string? ContactEmail, string? PublicDescription, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+public sealed record Provider(ProviderId Id, string Slug, string DisplayName, string TimeZoneId, string? ContactEmail, string? PublicDescription, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, string? AccountId = null, string? AppInstallationId = null);
 public sealed record BookableResource(ResourceId Id, ProviderId ProviderId, string DisplayName, string ResourceType, string TimeZoneId, string CapacityMode, bool IsActive, DateTimeOffset CreatedAt);
 public sealed record SchedulingService(ServiceId Id, ProviderId ProviderId, string Name, string? Description, int DurationMinutes, int BufferBeforeMinutes, int BufferAfterMinutes, IReadOnlyList<ResourceId> AssignedResourceIds, bool IsPublic, DateTimeOffset CreatedAt);
 public sealed record AvailabilityRule(AvailabilityRuleId Id, ProviderId ProviderId, ResourceId ResourceId, string TimeZoneId, IReadOnlyList<DayOfWeek> DaysOfWeek, TimeOnly LocalStartTime, TimeOnly LocalEndTime, DateOnly? EffectiveFrom, DateOnly? EffectiveUntil, bool IsActive, DateTimeOffset CreatedAt);

@@ -1,5 +1,5 @@
 import { api } from "../../machina/api";
-import type { AvailabilityRule, BookableResource, BookableSlot, Booking, BookingAuditEvent, CancelBookingResponse, HoldResponse, Provider, SchedulingLifecycleSummary, SchedulingService } from "./types";
+import type { AvailabilityRule, BookableResource, BookableSlot, Booking, BookingAuditEvent, CancelBookingResponse, HoldResponse, Provider, SchedulingLifecycleSummary, SchedulingService, LocalDevPlatformContext } from "./types";
 
 export const schedulingEndpoints = {
   providers: "/apps/scheduling/providers",
@@ -19,6 +19,7 @@ export const schedulingEndpoints = {
   publicServices: (slug: string) => `/apps/scheduling/public/${slug}/services`,
   publicSlots: (slug: string, serviceId: string, from: string, to: string, timeZone: string) => `/apps/scheduling/public/${slug}/slots?serviceId=${encodeURIComponent(serviceId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&timeZone=${encodeURIComponent(timeZone)}`,
 };
+export const getLocalDevContext = () => api<LocalDevPlatformContext>("/platform/local-dev/context");
 export const createProvider = (body: { slug: string; displayName: string; timeZoneId: string; contactEmail?: string; publicDescription?: string }) => api<Provider>(schedulingEndpoints.providers, { method: "POST", body: JSON.stringify(body) });
 export const createResource = (body: { providerId: string; displayName: string; resourceType: string; timeZoneId?: string }) => api<BookableResource>(schedulingEndpoints.resources, { method: "POST", body: JSON.stringify(body) });
 export const createService = (body: { providerId: string; name: string; description?: string; durationMinutes: number }) => api<SchedulingService>(schedulingEndpoints.services, { method: "POST", body: JSON.stringify(body) });

@@ -4,6 +4,8 @@ using Leviathan.Server.Apps.Scheduling.Api;
 using Leviathan.Server.Apps.Scheduling.Engine;
 using Leviathan.Server.Apps.Scheduling.Storage;
 using Leviathan.Server.Apps.Scheduling.Runtime;
+using Leviathan.Server.Platform.Apps;
+using Leviathan.Server.Platform.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<AriadneSessionPersistence>();
@@ -16,6 +18,9 @@ builder.Services.AddSingleton<SchedulingBookingRuntime>();
 builder.Services.AddSingleton<BookingClaimService>();
 builder.Services.AddSingleton<SlotGenerator>();
 builder.Services.AddSingleton<LeviathanAppRegistry>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<ILeviathanRequestContextAccessor, LeviathanRequestContextAccessor>();
+builder.Services.AddSingleton<LeviathanLocalDevAppInstallations>();
 builder.Services.AddSingleton<AriadneSessionManager>();
 builder.Services.AddCors(options =>
 {
@@ -26,6 +31,7 @@ var app = builder.Build();
 app.UseCors();
 
 app.MapGet("/api/apps", (LeviathanAppRegistry registry) => Results.Ok(registry.Apps));
+app.MapGet("/api/platform/local-dev/context", (ILeviathanRequestContextAccessor ctx, LeviathanLocalDevAppInstallations installs) => ctx.Current is { } c ? Results.Ok(new { c.ActorKind, UserId = c.UserId.Value, AccountId = c.AccountId.Value, UnsafeLocalDev = c.UnsafeLocalDev, c.RequestId, SchedulingInstallation = installs.Scheduling }) : Results.Json(new { error = "unsafe_admin_disabled", message = "Local-dev context is only available when LEVIATHAN_ALLOW_UNSAFE_ADMIN=true." }, statusCode: StatusCodes.Status403Forbidden));
 app.MapSchedulingEndpoints();
 
 app.MapGet("/api/apps/{appId}", (string appId, LeviathanAppRegistry registry) =>

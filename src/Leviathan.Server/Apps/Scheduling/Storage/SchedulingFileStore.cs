@@ -47,7 +47,9 @@ public sealed class SchedulingFileStore(IConfiguration config) : SchedulingStore
     public Task SaveProvider(Provider provider, CancellationToken ct = default) => Write(Path.Combine(ProviderDir(provider.Id), "provider.json"), provider, ct);
     public Task<Provider?> GetProvider(ProviderId id, CancellationToken ct = default) => Read<Provider>(Path.Combine(ProviderDir(id), "provider.json"), ct);
     public async Task<Provider?> GetProviderBySlug(string slug, CancellationToken ct = default)
-    { if (!Directory.Exists(_root)) return null; foreach (var file in Directory.EnumerateFiles(_root, "provider.json", SearchOption.AllDirectories)) { var p = await Read<Provider>(file, ct); if (p?.Slug == slug) return p; } return null; }
+    { if (!Directory.Exists(_root)) return null; foreach (var p in await GetProviders(ct)) { if (p.Slug == slug) return p; } return null; }
+    public async Task<IReadOnlyList<Provider>> GetProviders(CancellationToken ct = default)
+    { if (!Directory.Exists(_root)) return []; var providers = new List<Provider>(); foreach (var file in Directory.EnumerateFiles(_root, "provider.json", SearchOption.AllDirectories)) { var p = await Read<Provider>(file, ct); if (p is not null) providers.Add(p); } return providers; }
     public Task SaveResource(BookableResource resource, CancellationToken ct = default) => Write(Path.Combine(ProviderDir(resource.ProviderId), "resources", resource.Id.Value + ".json"), resource, ct);
     public Task<IReadOnlyList<BookableResource>> GetResources(ProviderId providerId, CancellationToken ct = default) => ReadAll<BookableResource>(Path.Combine(ProviderDir(providerId), "resources"), "*.json", ct);
     public Task SaveService(SchedulingService service, CancellationToken ct = default) => Write(Path.Combine(ProviderDir(service.ProviderId), "services", service.Id.Value + ".json"), service, ct);

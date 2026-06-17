@@ -1,5 +1,6 @@
 export type EntityId = { value: string };
-export type Provider = { id: EntityId; slug: string; displayName: string; timeZoneId: string; contactEmail?: string; publicDescription?: string };
+export type Provider = { id: EntityId; slug: string; displayName: string; timeZoneId: string; contactEmail?: string; publicDescription?: string; accountId?: string; appInstallationId?: string };
+export type LocalDevPlatformContext = { actorKind: "local-dev"; userId: string; accountId: string; unsafeLocalDev: boolean; requestId: string; schedulingInstallation: { appInstallationId: EntityId; accountId: EntityId; appId: string; status: string; persistenceScope: string } };
 export type BookableResource = { id: EntityId; providerId: EntityId; displayName: string; resourceType: string; timeZoneId: string };
 export type SchedulingService = { id: EntityId; providerId: EntityId; name: string; description?: string; durationMinutes: number; assignedResourceIds: EntityId[]; isPublic: boolean };
 export type AvailabilityRule = { id: EntityId; providerId: EntityId; resourceId: EntityId; timeZoneId: string; daysOfWeek: string[]; localStartTime: string; localEndTime: string };

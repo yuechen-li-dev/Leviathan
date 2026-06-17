@@ -201,6 +201,8 @@ Future rules:
 
 ## Local / Dev Mode Policy
 
+M14 implements the first local-dev-only structural bridge for this policy: `user_local_dev`, `acct_local_dev`, and `inst_local_dev_scheduling` are deterministic request-context/app-installation ids used only when `LEVIATHAN_ALLOW_UNSAFE_ADMIN=true`. Scheduling providers created in unsafe admin mode are stamped with that account/app installation, and old local provider records without ownership are treated as legacy local-dev records. This remains non-production and does not add login, memberships, capabilities, or a database.
+
 Until real auth exists:
 
 - Local/dev mode may allow provider setup, resource/service/availability management, booking inspection, audit/lifecycle inspection, and cancellation for demos only.
