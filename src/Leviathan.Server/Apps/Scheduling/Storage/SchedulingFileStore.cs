@@ -3,6 +3,8 @@ using Leviathan.Server.Apps.Scheduling.Domain;
 
 namespace Leviathan.Server.Apps.Scheduling.Storage;
 
+public sealed class SchedulingPersistenceException(string message, Exception? inner = null) : Exception(message, inner);
+
 public sealed class SchedulingFileStore(IConfiguration config) : SchedulingStore
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -10,8 +12,31 @@ public sealed class SchedulingFileStore(IConfiguration config) : SchedulingStore
     private readonly string _root = Path.Combine(config["LEVIATHAN_DATA_DIR"] ?? Environment.GetEnvironmentVariable("LEVIATHAN_DATA_DIR") ?? Path.Combine(AppContext.BaseDirectory, "data"), "scheduling", "providers");
     private static string Safe(string value) => string.Concat(value.Where(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-'));
     private string ProviderDir(ProviderId id) => Path.Combine(_root, Safe(id.Value));
-    private async Task Write<T>(string path, T value, CancellationToken ct) { Directory.CreateDirectory(Path.GetDirectoryName(path)!); await File.WriteAllTextAsync(path, JsonSerializer.Serialize(value, Json), ct); }
-    private static async Task<T?> Read<T>(string path, CancellationToken ct) => File.Exists(path) ? JsonSerializer.Deserialize<T>(await File.ReadAllTextAsync(path, ct), Json) : default;
+
+    private static async Task Write<T>(string path, T value, CancellationToken ct)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var tmp = path + "." + Guid.NewGuid().ToString("n") + ".tmp";
+        try
+        {
+            await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(value, Json), ct);
+            File.Move(tmp, path, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            throw new SchedulingPersistenceException($"Could not write scheduling file '{path}'.", ex);
+        }
+    }
+
+    private static async Task<T?> Read<T>(string path, CancellationToken ct)
+    {
+        if (!File.Exists(path)) return default;
+        try { return JsonSerializer.Deserialize<T>(await File.ReadAllTextAsync(path, ct), Json); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        { throw new SchedulingPersistenceException($"Could not read scheduling file '{path}'.", ex); }
+    }
+
     private static async Task<IReadOnlyList<T>> ReadAll<T>(string dir, string pattern, CancellationToken ct)
     {
         if (!Directory.Exists(dir)) return [];
@@ -38,6 +63,6 @@ public sealed class SchedulingFileStore(IConfiguration config) : SchedulingStore
     public Task SaveBooking(Booking booking, CancellationToken ct = default) => Write(Path.Combine(ProviderDir(booking.ProviderId), "bookings", booking.Id.Value, "booking.json"), booking, ct);
     public async Task<Booking?> GetBooking(BookingId id, CancellationToken ct = default) { if (!Directory.Exists(_root)) return null; foreach (var file in Directory.EnumerateFiles(_root, "booking.json", SearchOption.AllDirectories)) { var b = await Read<Booking>(file, ct); if (b?.Id == id) return b; } return null; }
     public async Task<IReadOnlyList<Booking>> GetBookings(ProviderId providerId, ResourceId? resourceId = null, CancellationToken ct = default) => (await ReadAll<Booking>(Path.Combine(ProviderDir(providerId), "bookings"), "booking.json", ct)).Where(b => resourceId is null || b.ResourceId == resourceId).ToArray();
-    public async Task AppendAudit(BookingAuditEvent evt, CancellationToken ct = default) { var line = JsonSerializer.Serialize(evt, JsonLine); var month = evt.OccurredAt.ToString("yyyy-MM"); var paths = new[] { Path.Combine(ProviderDir(evt.ProviderId), "audit", $"events-{month}.jsonl") }.Concat(evt.BookingId is null ? [] : [Path.Combine(ProviderDir(evt.ProviderId), "bookings", evt.BookingId.Value, "audit.jsonl")]); foreach (var p in paths) { Directory.CreateDirectory(Path.GetDirectoryName(p)!); await File.AppendAllTextAsync(p, line + Environment.NewLine, ct); } }
-    public async Task<IReadOnlyList<BookingAuditEvent>> GetBookingAudit(ProviderId providerId, BookingId bookingId, CancellationToken ct = default) { var p = Path.Combine(ProviderDir(providerId), "bookings", bookingId.Value, "audit.jsonl"); if (!File.Exists(p)) return []; return (await File.ReadAllLinesAsync(p, ct)).Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => JsonSerializer.Deserialize<BookingAuditEvent>(l, JsonLine)!).ToArray(); }
+    public async Task AppendAudit(BookingAuditEvent evt, CancellationToken ct = default) { var line = JsonSerializer.Serialize(evt, JsonLine); var month = evt.OccurredAt.ToString("yyyy-MM"); var paths = new[] { Path.Combine(ProviderDir(evt.ProviderId), "audit", $"events-{month}.jsonl") }.Concat(evt.BookingId is null ? [] : [Path.Combine(ProviderDir(evt.ProviderId), "bookings", evt.BookingId.Value, "audit.jsonl")]); foreach (var p in paths) { try { Directory.CreateDirectory(Path.GetDirectoryName(p)!); await File.AppendAllTextAsync(p, line + Environment.NewLine, ct); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { throw new SchedulingPersistenceException($"Could not append scheduling audit '{p}'.", ex); } } }
+    public async Task<IReadOnlyList<BookingAuditEvent>> GetBookingAudit(ProviderId providerId, BookingId bookingId, CancellationToken ct = default) { var p = Path.Combine(ProviderDir(providerId), "bookings", bookingId.Value, "audit.jsonl"); if (!File.Exists(p)) return []; try { return (await File.ReadAllLinesAsync(p, ct)).Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => JsonSerializer.Deserialize<BookingAuditEvent>(l, JsonLine)!).ToArray(); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { throw new SchedulingPersistenceException($"Could not read scheduling audit '{p}'.", ex); } }
 }

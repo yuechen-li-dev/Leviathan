@@ -54,8 +54,53 @@ public sealed class SchedulingM8Tests
         var auditBody = await auditResponse.Content.ReadAsStringAsync();
         Assert.True(auditResponse.IsSuccessStatusCode, auditBody);
         var audit = System.Text.Json.JsonSerializer.Deserialize<BookingAuditEvent[]>(auditBody, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-        Assert.Contains(audit!, e => e.EventType == "booking_confirmed");
+        var confirmedAudit = Assert.Single(audit!, e => e.EventType == "booking_confirmed");
+        Assert.Equal("UTC", confirmedAudit.Data["timeZoneId"]);
+        Assert.Equal("accepted", confirmedAudit.Data["decision"]);
         Assert.True(File.Exists(Path.Combine(fixture.DataDir, "scheduling", "providers", setup.ProviderId, "bookings", booking.Id.Value, "booking.json")));
+    }
+
+
+    [Fact]
+    public async Task Los_Angeles_rule_expands_to_correct_utc_and_customer_timezone_only_changes_display()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var setup = await CreateSetup(client, "m9-la", twoResources: false, timeZone: "America/Los_Angeles");
+        var from = DateTimeOffset.Parse("2030-07-01T00:00:00Z");
+        var to = DateTimeOffset.Parse("2030-07-02T00:00:00Z");
+        var slots = await client.GetFromJsonAsync<BookableSlotDto[]>($"/api/apps/scheduling/public/m9-la/slots?serviceId={setup.ServiceId}&from={Uri.EscapeDataString(from.ToString("O"))}&to={Uri.EscapeDataString(to.ToString("O"))}&timeZone=America%2FNew_York");
+        var slot = Assert.Single(slots!, s => s.StartsAtUtc == DateTimeOffset.Parse("2030-07-01T16:00:00Z"));
+        Assert.Equal("America/Los_Angeles", slot.ProviderTimeZoneId);
+        Assert.Equal("America/New_York", slot.DisplayTimeZoneId);
+        Assert.Contains("America/New_York", slot.DisplayLabel);
+    }
+
+    [Fact]
+    public async Task Invalid_timezone_returns_controlled_error_and_admin_gate_blocks_without_opt_in()
+    {
+        using var gated = new LeviathanFactory(allowUnsafeAdmin: false);
+        var forbidden = await gated.CreateClient().PostAsJsonAsync("/api/apps/scheduling/providers", new CreateProviderRequest("blocked", "Blocked", "UTC", null, null));
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+        using var fixture = new LeviathanFactory();
+        var bad = await fixture.CreateClient().PostAsJsonAsync("/api/apps/scheduling/providers", new CreateProviderRequest("bad-tz", "Bad", "Not/AZone", null, null));
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        var error = await bad.Content.ReadFromJsonAsync<SchedulingError>();
+        Assert.Equal("invalid_timezone", error!.Error);
+    }
+
+    [Fact]
+    public async Task Corrupt_booking_file_fails_claim_safely()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var setup = await CreateSetup(client, "m9-corrupt", twoResources: false);
+        var bookingDir = Path.Combine(fixture.DataDir, "scheduling", "providers", setup.ProviderId, "bookings", "broken");
+        Directory.CreateDirectory(bookingDir);
+        await File.WriteAllTextAsync(Path.Combine(bookingDir, "booking.json"), "{ not json");
+        var response = await client.PostAsJsonAsync("/api/apps/scheduling/holds", new CreateHoldRequest(setup.ProviderId, setup.ServiceId, setup.ResourceId, DateTimeOffset.Parse("2030-01-07T09:00:00Z"), DateTimeOffset.Parse("2030-01-07T09:30:00Z"), "UTC"));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
     }
 
     [Fact]
@@ -73,17 +118,17 @@ public sealed class SchedulingM8Tests
         Assert.Equal("active", released.Status);
     }
 
-    private static async Task<(string ProviderId, string ServiceId, string ResourceId, string? SecondResourceId)> CreateSetup(HttpClient client, string slug, bool twoResources)
+    private static async Task<(string ProviderId, string ServiceId, string ResourceId, string? SecondResourceId)> CreateSetup(HttpClient client, string slug, bool twoResources, string timeZone = "UTC")
     {
-        var provider = (await (await client.PostAsJsonAsync("/api/apps/scheduling/providers", new CreateProviderRequest(slug, "M8 Demo", "UTC", null, null))).Content.ReadFromJsonAsync<Provider>())!;
-        var resource = (await (await client.PostAsJsonAsync("/api/apps/scheduling/resources", new CreateResourceRequest(provider.Id.Value, "Room A", "room", "UTC"))).Content.ReadFromJsonAsync<BookableResource>())!;
+        var provider = (await (await client.PostAsJsonAsync("/api/apps/scheduling/providers", new CreateProviderRequest(slug, "M8 Demo", timeZone, null, null))).Content.ReadFromJsonAsync<Provider>())!;
+        var resource = (await (await client.PostAsJsonAsync("/api/apps/scheduling/resources", new CreateResourceRequest(provider.Id.Value, "Room A", "room", timeZone))).Content.ReadFromJsonAsync<BookableResource>())!;
         BookableResource? second = null;
-        if (twoResources) second = (await (await client.PostAsJsonAsync("/api/apps/scheduling/resources", new CreateResourceRequest(provider.Id.Value, "Room B", "room", "UTC"))).Content.ReadFromJsonAsync<BookableResource>())!;
+        if (twoResources) second = (await (await client.PostAsJsonAsync("/api/apps/scheduling/resources", new CreateResourceRequest(provider.Id.Value, "Room B", "room", timeZone))).Content.ReadFromJsonAsync<BookableResource>())!;
         var service = (await (await client.PostAsJsonAsync("/api/apps/scheduling/services", new CreateServiceRequest(provider.Id.Value, "Consult", null, 30))).Content.ReadFromJsonAsync<SchedulingService>())!;
         await client.PostAsJsonAsync($"/api/apps/scheduling/services/{service.Id.Value}/resources", new AssignResourceRequest(provider.Id.Value, resource.Id.Value));
         if (second is not null) await client.PostAsJsonAsync($"/api/apps/scheduling/services/{service.Id.Value}/resources", new AssignResourceRequest(provider.Id.Value, second.Id.Value));
-        await client.PostAsJsonAsync("/api/apps/scheduling/availability-rules", new CreateAvailabilityRuleRequest(provider.Id.Value, resource.Id.Value, "UTC", [DayOfWeek.Monday], "09:00", "12:00", null, null));
-        if (second is not null) await client.PostAsJsonAsync("/api/apps/scheduling/availability-rules", new CreateAvailabilityRuleRequest(provider.Id.Value, second.Id.Value, "UTC", [DayOfWeek.Monday], "09:00", "12:00", null, null));
+        await client.PostAsJsonAsync("/api/apps/scheduling/availability-rules", new CreateAvailabilityRuleRequest(provider.Id.Value, resource.Id.Value, timeZone, [DayOfWeek.Monday], "09:00", "12:00", null, null));
+        if (second is not null) await client.PostAsJsonAsync("/api/apps/scheduling/availability-rules", new CreateAvailabilityRuleRequest(provider.Id.Value, second.Id.Value, timeZone, [DayOfWeek.Monday], "09:00", "12:00", null, null));
         return (provider.Id.Value, service.Id.Value, resource.Id.Value, second?.Id.Value);
     }
     private static async Task<HoldResponse> Hold(HttpClient client, string providerId, string serviceId, string resourceId, DateTimeOffset start, DateTimeOffset end)
@@ -95,6 +140,8 @@ public sealed class SchedulingM8Tests
     private sealed class LeviathanFactory : WebApplicationFactory<Program>
     {
         public string DataDir { get; } = Path.Combine(Path.GetTempPath(), "leviathan-tests", Guid.NewGuid().ToString("n"));
-        protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder) => builder.UseSetting("LEVIATHAN_DATA_DIR", DataDir);
+        private readonly bool _allowUnsafeAdmin;
+        public LeviathanFactory(bool allowUnsafeAdmin = true) => _allowUnsafeAdmin = allowUnsafeAdmin;
+        protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder) => builder.UseSetting("LEVIATHAN_DATA_DIR", DataDir).UseSetting("LEVIATHAN_ALLOW_UNSAFE_ADMIN", _allowUnsafeAdmin ? "true" : "false");
     }
 }
