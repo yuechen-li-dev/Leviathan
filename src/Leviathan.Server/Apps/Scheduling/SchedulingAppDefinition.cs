@@ -12,6 +12,6 @@ public sealed class SchedulingAppDefinition : ILeviathanAppDefinition
         Runtime: "scheduling.local.v1",
         FrontendRoute: "/apps/scheduling",
         PersistenceScope: "scheduling",
-        Capabilities: ["admin.provider.configure", "provider.config", "resource.booking", "availability.rules", "holds", "bookings", "audit.local"],
+        Capabilities: ["admin.provider.configure", "provider.config", "resource.booking", "availability.rules", "holds", "bookings", "audit.local", "object.read", "object.write", "object.list", "object.delete"],
         Metadata: new Dictionary<string, string> { ["m8"] = "plain-local-claim-engine", ["adminSafety"] = "local-dev-only-no-auth" });
 }

@@ -12,6 +12,7 @@ public static class ObjectStorageActuationRegistration
         services.AddSingleton(options);
         services.AddSingleton<InMemoryObjectStorageOperationEventSink>();
         services.AddSingleton<IObjectStorageOperationEventSink>(sp => sp.GetRequiredService<InMemoryObjectStorageOperationEventSink>());
+        services.AddSingleton<ILeviathanActuationContextResolver, LeviathanActuationContextResolver>();
         services.AddSingleton<ObjectStorageActuationHandler>();
         return services;
     }

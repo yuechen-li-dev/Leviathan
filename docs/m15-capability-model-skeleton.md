@@ -160,3 +160,7 @@ Object storage adapter abstraction for Dominatus chunks and app artifacts, with 
 ## M17 object storage actuator seam
 
 M17 introduces object storage commands that carry optional account/app-installation/correlation context and map operations to the existing `object.read`, `object.write`, `object.list`, and `object.delete` capability names. Real enforcement is deferred until Leviathan request context reliably flows into Dominatus actuation handlers; the initial handler is registered in trusted-internal mode and documents this explicitly rather than faking security.
+
+## M18 update: actuation capability seam
+
+Object-storage actuation now uses the M15 capability policy in policy-enforced mode. The actuation handler resolves account/app-installation/request context, evaluates object capabilities through `ILeviathanCapabilityPolicy`, writes the existing capability audit envelope via the capability store, and mirrors the decision metadata on object operation events. Dominatus host actuation policies remain available for coarse synchronous gates; Leviathan continues to own grants and authorization decisions.
