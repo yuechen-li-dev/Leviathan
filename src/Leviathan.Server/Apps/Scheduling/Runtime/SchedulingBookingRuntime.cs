@@ -3,6 +3,7 @@ using System.Text.Json;
 using Dominatus.Core.Persistence;
 using Dominatus.Core.Runtime;
 using Leviathan.Server.Apps.Scheduling.Domain;
+using Leviathan.Server.Platform.Storage;
 
 namespace Leviathan.Server.Apps.Scheduling.Runtime;
 
@@ -11,13 +12,11 @@ public sealed class SchedulingBookingRuntime
     private const string CheckpointFile = "lifecycle.dom1";
     private const string ManifestFile = "lifecycle-manifest.json";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
-    private readonly string _providersRoot;
+    private readonly LocalFileLeviathanObjectStore _objectStore;
 
-    public SchedulingBookingRuntime(IConfiguration config, IWebHostEnvironment environment)
+    public SchedulingBookingRuntime(ILeviathanObjectStore objectStore)
     {
-        var configured = config["LEVIATHAN_DATA_DIR"] ?? Environment.GetEnvironmentVariable("LEVIATHAN_DATA_DIR");
-        var root = Path.GetFullPath(string.IsNullOrWhiteSpace(configured) ? Path.Combine(environment.ContentRootPath, "data") : configured);
-        _providersRoot = Path.Combine(root, "scheduling", "providers");
+        _objectStore = objectStore as LocalFileLeviathanObjectStore ?? throw new InvalidOperationException("Scheduling lifecycle persistence currently requires the local file object store because Dominatus SaveFile is path-based.");
     }
 
     public async Task<SchedulingLifecycleSummary> HoldCreated(Hold hold, string? lastAuditEventId, CancellationToken ct = default) =>
@@ -55,11 +54,11 @@ public sealed class SchedulingBookingRuntime
 
     private async Task<SchedulingLifecycleSummary> Save(SchedulingBookingCheckpoint checkpoint, CancellationToken ct)
     {
-        var dir = checkpoint.BookingId is null
-            ? HoldDir(new(checkpoint.ProviderId), checkpoint.WorkflowState == SchedulingBookingStates.Expired ? "expired" : "active", new(checkpoint.HoldId))
-            : BookingDir(new(checkpoint.ProviderId), new(checkpoint.BookingId));
-        Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, CheckpointFile);
+        var key = checkpoint.BookingId is null
+            ? HoldKey(new(checkpoint.ProviderId), checkpoint.WorkflowState == SchedulingBookingStates.Expired ? "expired" : "active", new(checkpoint.HoldId), CheckpointFile)
+            : BookingKey(new(checkpoint.ProviderId), new(checkpoint.BookingId), CheckpointFile);
+        var path = _objectStore.PathFor(key);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
         var world = new AiWorld();
         world.Bb.Set(SchedulingBookingKeys.ProviderId, checkpoint.ProviderId);
@@ -81,7 +80,10 @@ public sealed class SchedulingBookingRuntime
         world.Bb.Set(SchedulingBookingKeys.ExpiresAt, checkpoint.ExpiresAt.ToString("O"));
 
         SaveFile.Write(path, DominatusSave.CreateCheckpointChunks(DominatusCheckpointBuilder.Capture(world), extra: new SchedulingLifecycleChunkContributor(checkpoint)));
-        await File.WriteAllTextAsync(Path.Combine(dir, ManifestFile), JsonSerializer.Serialize(ToSummary(checkpoint, path), Json), ct);
+        var manifestKey = checkpoint.BookingId is null
+            ? HoldKey(new(checkpoint.ProviderId), checkpoint.WorkflowState == SchedulingBookingStates.Expired ? "expired" : "active", new(checkpoint.HoldId), ManifestFile)
+            : BookingKey(new(checkpoint.ProviderId), new(checkpoint.BookingId), ManifestFile);
+        await _objectStore.PutAsync(manifestKey, System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(ToSummary(checkpoint, path), Json)), new("application/json"), ct: ct);
         return ToSummary(checkpoint, path);
     }
 
@@ -103,8 +105,10 @@ public sealed class SchedulingBookingRuntime
     private static SchedulingLifecycleSummary ToSummary(SchedulingBookingCheckpoint c, string path) =>
         new(c.Status, c.ProviderId, c.ResourceId, c.ServiceId, c.HoldId, c.BookingId, c.WorkflowState, File.Exists(path), path, c.LastAuditEventId, c.CreatedAt, c.UpdatedAt, c.ExpiresAt);
 
-    private string HoldDir(ProviderId providerId, string bucket, HoldId holdId) => Path.Combine(_providersRoot, Safe(providerId.Value), "holds", bucket, Safe(holdId.Value));
-    private string BookingDir(ProviderId providerId, BookingId bookingId) => Path.Combine(_providersRoot, Safe(providerId.Value), "bookings", Safe(bookingId.Value));
+    private string HoldDir(ProviderId providerId, string bucket, HoldId holdId) => _objectStore.PathFor(HoldKey(providerId, bucket, holdId, string.Empty));
+    private string BookingDir(ProviderId providerId, BookingId bookingId) => _objectStore.PathFor(BookingKey(providerId, bookingId, string.Empty));
+    private static LeviathanObjectKey HoldKey(ProviderId providerId, string bucket, HoldId holdId, string fileName) => LeviathanObjectKey.SchedulingHoldLifecycle(providerId.Value, bucket, holdId.Value, fileName);
+    private static LeviathanObjectKey BookingKey(ProviderId providerId, BookingId bookingId, string fileName) => LeviathanObjectKey.SchedulingBookingLifecycle(providerId.Value, bookingId.Value, fileName);
     private static string Safe(string value) => string.Concat(value.Where(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-'));
     private static string TokenRef(string token) => "sha256:" + Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token)))[..16].ToLowerInvariant();
 }

@@ -19,10 +19,14 @@ public static class LeviathanCapabilityNames
     public const string SmsSend = "sms.send";
     public const string FileRead = "file.read";
     public const string FileWrite = "file.write";
+    public const string ObjectRead = "object.read";
+    public const string ObjectWrite = "object.write";
+    public const string ObjectList = "object.list";
+    public const string ObjectDelete = "object.delete";
     public const string LlmCall = "llm.call";
     public const string HomeAssistantServiceCall = "homeassistant.service.call";
 
-    public static readonly string[] WellKnown = [AdminProviderConfigure, CalendarRead, CalendarWrite, GraphOutlookCalendar, PaymentCheckout, PaymentRefund, NotificationSend, EmailSend, SmsSend, FileRead, FileWrite, LlmCall, HomeAssistantServiceCall];
+    public static readonly string[] WellKnown = [AdminProviderConfigure, CalendarRead, CalendarWrite, GraphOutlookCalendar, PaymentCheckout, PaymentRefund, NotificationSend, EmailSend, SmsSend, FileRead, FileWrite, ObjectRead, ObjectWrite, ObjectList, ObjectDelete, LlmCall, HomeAssistantServiceCall];
 }
 
 public sealed record LeviathanCapabilityName(string Value) { public override string ToString() => Value; }

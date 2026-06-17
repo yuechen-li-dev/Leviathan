@@ -1,30 +1,31 @@
 using Dominatus.Core.Persistence;
 using System.Text.Json;
+using System.Text;
+using Leviathan.Server.Platform.Storage;
 
 namespace Leviathan.Server.Ariadne;
 
 public sealed class AriadneSessionPersistence
 {
     private const string CheckpointFile = "checkpoint.dom1";
-    private readonly string _root;
+    private readonly LocalFileLeviathanObjectStore _objectStore;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    public AriadneSessionPersistence(IConfiguration configuration, IWebHostEnvironment environment)
+    public AriadneSessionPersistence(ILeviathanObjectStore objectStore)
     {
-        var configured = configuration["LEVIATHAN_DATA_DIR"] ?? Environment.GetEnvironmentVariable("LEVIATHAN_DATA_DIR");
-        _root = Path.GetFullPath(string.IsNullOrWhiteSpace(configured) ? Path.Combine(environment.ContentRootPath, "data") : configured);
+        _objectStore = objectStore as LocalFileLeviathanObjectStore ?? throw new InvalidOperationException("Ariadne persistence currently requires the local file object store because Dominatus SaveFile is path-based.");
     }
 
-    public string Root => _root;
+    public string Root => _objectStore.RootPath;
 
     public void Save(AriadneSession session, LeviathanAppManifest manifest)
     {
         var dir = SessionDirectory(manifest.PersistenceScope, session.Id);
         Directory.CreateDirectory(dir);
-        var checkpointPath = Path.Combine(dir, CheckpointFile);
+        var checkpointPath = CheckpointPath(manifest.PersistenceScope, session.Id);
         SaveFile.Write(checkpointPath, session.CreateCheckpointChunks());
         var now = DateTimeOffset.UtcNow;
-        var manifestPath = Path.Combine(dir, "manifest.json");
+        var manifestPath = ManifestPath(manifest.PersistenceScope, session.Id);
         var existing = ReadManifestOrNull(manifestPath);
         var sessionManifest = new AriadneSessionManifest(
             SessionId: session.Id,
@@ -34,7 +35,7 @@ public sealed class AriadneSessionPersistence
             IsComplete: session.Screen().IsComplete,
             PersistenceFormat: "dominatus-save/dom1",
             CurrentCheckpoint: CheckpointFile);
-        File.WriteAllText(manifestPath, JsonSerializer.Serialize(sessionManifest, JsonOptions));
+        _objectStore.PutAsync(ManifestKey(manifest.PersistenceScope, session.Id), Encoding.UTF8.GetBytes(JsonSerializer.Serialize(sessionManifest, JsonOptions)), new("application/json")).GetAwaiter().GetResult();
     }
 
     public bool Exists(LeviathanAppManifest manifest, string sessionId) => File.Exists(CheckpointPath(manifest.PersistenceScope, sessionId));
@@ -43,7 +44,7 @@ public sealed class AriadneSessionPersistence
 
     public IReadOnlyList<AriadneSessionListItemDto> ListSessions(LeviathanAppManifest manifest)
     {
-        var dir = Path.Combine([_root, ..PathFromScope(manifest.PersistenceScope), "sessions"]);
+        var dir = _objectStore.PathFor(new LeviathanObjectKey(string.Join('/', PathFromScope(manifest.PersistenceScope).Concat(["sessions"]))));
         if (!Directory.Exists(dir)) return Array.Empty<AriadneSessionListItemDto>();
         return Directory.EnumerateDirectories(dir)
             .Select(ToListItemOrNull)
@@ -53,9 +54,13 @@ public sealed class AriadneSessionPersistence
             .ToArray();
     }
 
-    private string SessionDirectory(string persistenceScope, string sessionId) => Path.Combine([_root, ..PathFromScope(persistenceScope), "sessions", sessionId]);
-    private string CheckpointPath(string persistenceScope, string sessionId) => Path.Combine(SessionDirectory(persistenceScope, sessionId), CheckpointFile);
-    private static string[] PathFromScope(string persistenceScope) => persistenceScope.Split(new[] {'/', '\\'}, StringSplitOptions.RemoveEmptyEntries);
+    private string SessionDirectory(string persistenceScope, string sessionId) => _objectStore.PathFor(SessionKey(persistenceScope, sessionId));
+    private string CheckpointPath(string persistenceScope, string sessionId) => _objectStore.PathFor(CheckpointKey(persistenceScope, sessionId));
+    private string ManifestPath(string persistenceScope, string sessionId) => _objectStore.PathFor(ManifestKey(persistenceScope, sessionId));
+    private static LeviathanObjectKey SessionKey(string persistenceScope, string sessionId) => new(string.Join('/', LeviathanObjectKey.ScopeParts(persistenceScope).Concat(["sessions", sessionId])));
+    private static LeviathanObjectKey CheckpointKey(string persistenceScope, string sessionId) => LeviathanObjectKey.AppSession(persistenceScope, sessionId, CheckpointFile);
+    private static LeviathanObjectKey ManifestKey(string persistenceScope, string sessionId) => LeviathanObjectKey.AppSession(persistenceScope, sessionId, "manifest.json");
+    private static string[] PathFromScope(string persistenceScope) => LeviathanObjectKey.ScopeParts(persistenceScope);
 
     private AriadneSessionListItemDto? ToListItemOrNull(string sessionDirectory)
     {
