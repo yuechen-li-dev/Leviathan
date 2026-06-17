@@ -3,6 +3,7 @@ using Leviathan.Server.Apps.Scheduling;
 using Leviathan.Server.Apps.Scheduling.Api;
 using Leviathan.Server.Apps.Scheduling.Engine;
 using Leviathan.Server.Apps.Scheduling.Storage;
+using Leviathan.Server.Apps.Scheduling.Runtime;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<AriadneSessionPersistence>();
@@ -11,6 +12,7 @@ builder.Services.AddSingleton<ILeviathanAppDefinition, RustSimulatorAppDefinitio
 builder.Services.AddSingleton<ILeviathanAppDefinition, SchedulingAppDefinition>();
 builder.Services.AddSingleton<SchedulingStore, SchedulingFileStore>();
 builder.Services.AddSingleton<ResourceLockRegistry>();
+builder.Services.AddSingleton<SchedulingBookingRuntime>();
 builder.Services.AddSingleton<BookingClaimService>();
 builder.Services.AddSingleton<SlotGenerator>();
 builder.Services.AddSingleton<LeviathanAppRegistry>();

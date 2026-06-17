@@ -53,3 +53,7 @@ Backend tests cover Los Angeles timezone expansion, customer display timezone be
 - Scheduling provider UX polish and local/dev identity boundary.
 - Expand `.ics` fields if needed.
 - Prepare payment/deposit contracts without real provider integration.
+
+## M10 note
+
+M10 preserves the M9 UTC/timezone and safe persistence behavior while adding Dominatus lifecycle checkpoints for hold, intake, confirmation, and expiration transitions. Holds and bookings continue to store UTC instants in Scheduling product JSON.
