@@ -156,3 +156,7 @@ Local-dev grant/decision endpoints are unavailable unless `LEVIATHAN_ALLOW_UNSAF
 ## Recommended M16
 
 Object storage adapter abstraction for Dominatus chunks and app artifacts, with the local-file adapter retained and S3/R2/Azure/GCS requirements documented.
+
+## M17 object storage actuator seam
+
+M17 introduces object storage commands that carry optional account/app-installation/correlation context and map operations to the existing `object.read`, `object.write`, `object.list`, and `object.delete` capability names. Real enforcement is deferred until Leviathan request context reliably flows into Dominatus actuation handlers; the initial handler is registered in trusted-internal mode and documents this explicitly rather than faking security.

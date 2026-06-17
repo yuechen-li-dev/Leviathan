@@ -113,3 +113,7 @@ Future S3/R2/Azure Blob/GCS adapters should implement the same contract without 
 - Run cloud adapter preflight for S3/R2/Azure/GCS semantics.
 - Run product metadata/query-plane preflight.
 - Continue Scheduling reschedule/reminder contract work.
+
+## M17 actuator boundary note
+
+M17 adds a Dominatus-facing object-storage actuation boundary on top of this abstraction. It does not require trusted platform internals to route manifests, checkpoints, Ariadne/RustSimulator session persistence, or Scheduling lifecycle persistence through actuation. Those paths may continue to call `ILeviathanObjectStore` directly when they are internal persistence details.
