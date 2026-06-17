@@ -1,3 +1,5 @@
+using Leviathan.Server.Platform.Capabilities;
+using Leviathan.Server.Platform.Identity;
 using Leviathan.Server.Platform.Storage;
 using Leviathan.Server.Platform.Storage.Actuation;
 using Microsoft.AspNetCore.Hosting;
@@ -114,6 +116,60 @@ public sealed class ObjectStorageActuationTests
         Assert.True(result.Ok, result.ErrorMessage);
     }
 
+
+    [Fact]
+    public async Task Policy_enforced_put_denies_without_context_and_does_not_write()
+    {
+        var (handler, sink, _) = CreatePolicyHandler(FakeCapabilityPolicy.Allow(LeviathanCapabilityNames.ObjectWrite));
+        var result = await handler.ExecutePutAsync(new("safe/denied.txt", Text: "nope"), default);
+        Assert.False(result.Ok);
+        Assert.Equal("capability_denied", result.ErrorCode);
+        Assert.Equal("missing_actuation_context", result.Decision?.ReasonCode);
+        Assert.False((await handler.ExecuteExistsAsync(new("safe/denied.txt", Context: TestContext(LeviathanCapabilityNames.ObjectRead)), default)).Exists);
+        Assert.Contains(sink.RecentEvents, e => e.Kind == "denied" && e.CapabilityAllowed == false && e.CapabilityReasonCode == "missing_actuation_context");
+    }
+
+    [Fact]
+    public async Task Policy_enforced_put_allows_with_matching_grant_metadata()
+    {
+        var (handler, sink, _) = CreatePolicyHandler(FakeCapabilityPolicy.Allow(LeviathanCapabilityNames.ObjectWrite, "grant_write"));
+        var result = await handler.ExecutePutAsync(new("safe/allowed.txt", Text: "yes", Context: TestContext(LeviathanCapabilityNames.ObjectWrite)), default);
+        Assert.True(result.Ok, result.ErrorMessage);
+        Assert.Equal("grant_write", result.Decision?.GrantId);
+        Assert.True(result.Decision?.Allowed);
+        Assert.Contains(sink.RecentEvents, e => e.Kind == "completed" && e.CapabilityName == LeviathanCapabilityNames.ObjectWrite && e.CapabilityAllowed == true && e.CapabilityGrantId == "grant_write" && e.AccountId == "acct_local_dev" && e.AppInstallationId == "inst_local_dev_scheduling" && e.ActorUserId == "user_local_dev");
+    }
+
+    [Fact]
+    public async Task Policy_enforced_get_list_delete_require_operation_capabilities()
+    {
+        var policy = new FakeCapabilityPolicy(new Dictionary<string, LeviathanCapabilityDecision>
+        {
+            [LeviathanCapabilityNames.ObjectWrite] = FakeCapabilityPolicy.Decision(LeviathanCapabilityNames.ObjectWrite, true, "grant_write"),
+            [LeviathanCapabilityNames.ObjectRead] = FakeCapabilityPolicy.Decision(LeviathanCapabilityNames.ObjectRead, true, "grant_read"),
+            [LeviathanCapabilityNames.ObjectList] = FakeCapabilityPolicy.Decision(LeviathanCapabilityNames.ObjectList, true, "grant_list"),
+            [LeviathanCapabilityNames.ObjectDelete] = FakeCapabilityPolicy.Decision(LeviathanCapabilityNames.ObjectDelete, true, "grant_delete"),
+        });
+        var (handler, _, _) = CreatePolicyHandler(policy);
+        await handler.ExecutePutAsync(new("safe/map.txt", Text: "x", Context: TestContext(LeviathanCapabilityNames.ObjectWrite)), default);
+        Assert.Equal("object.read", (await handler.ExecuteGetAsync(new("safe/map.txt", Context: TestContext(LeviathanCapabilityNames.ObjectRead)), default)).Decision?.CapabilityName);
+        Assert.Equal("object.list", (await handler.ExecuteListAsync(new("safe", Context: TestContext(LeviathanCapabilityNames.ObjectList)), default)).Decision?.CapabilityName);
+        Assert.Equal("object.delete", (await handler.ExecuteDeleteAsync(new("safe/map.txt", Context: TestContext(LeviathanCapabilityNames.ObjectDelete)), default)).Decision?.CapabilityName);
+        Assert.Equal(new[] { "object.write", "object.read", "object.list", "object.delete" }, policy.SeenCapabilities);
+    }
+
+    [Fact]
+    public async Task Policy_enforced_invalid_key_is_rejected_safely_before_policy_call()
+    {
+        var policy = FakeCapabilityPolicy.Allow(LeviathanCapabilityNames.ObjectRead);
+        var (handler, sink, _) = CreatePolicyHandler(policy);
+        var result = await handler.ExecuteGetAsync(new("../escape", Context: TestContext(LeviathanCapabilityNames.ObjectRead)), default);
+        Assert.False(result.Ok);
+        Assert.Equal("invalid_key", result.ErrorCode);
+        Assert.Empty(policy.SeenCapabilities);
+        Assert.Contains(sink.RecentEvents, e => e.Kind == "rejected" && e.ObjectKey == "<invalid>");
+    }
+
     private static (ObjectStorageActuationHandler Handler, InMemoryObjectStorageOperationEventSink Sink, string Root) CreateHandler()
     {
         var root = Path.Combine(Path.GetTempPath(), "leviathan-object-actuation-tests", Guid.NewGuid().ToString("n"));
@@ -121,6 +177,48 @@ public sealed class ObjectStorageActuationTests
         var store = new LocalFileLeviathanObjectStore(config, new TestEnvironment(), Options.Create(new LeviathanObjectStoreOptions { RootPath = root }));
         var sink = new InMemoryObjectStorageOperationEventSink();
         return (new ObjectStorageActuationHandler(store, sink), sink, root);
+    }
+
+
+    private static ObjectStorageCapabilityContext TestContext(string capability) => new(
+        AccountId: "acct_local_dev",
+        AppId: "scheduling",
+        AppInstallationId: "inst_local_dev_scheduling",
+        CorrelationId: $"corr_{capability}");
+
+    private static (ObjectStorageActuationHandler Handler, InMemoryObjectStorageOperationEventSink Sink, string Root) CreatePolicyHandler(FakeCapabilityPolicy policy)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "leviathan-object-actuation-tests", Guid.NewGuid().ToString("n"));
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["LEVIATHAN_DATA_DIR"] = root }).Build();
+        var store = new LocalFileLeviathanObjectStore(config, new TestEnvironment(), Options.Create(new LeviathanObjectStoreOptions { RootPath = root }));
+        var sink = new InMemoryObjectStorageOperationEventSink();
+        return (new ObjectStorageActuationHandler(store, sink, new ObjectStorageActuationOptions { SecurityMode = ObjectStorageActuationSecurityMode.PolicyEnforced }, policy, new TestActuationContextResolver()), sink, root);
+    }
+
+    private sealed class TestActuationContextResolver : ILeviathanActuationContextResolver
+    {
+        public LeviathanActuationContext? Resolve(ObjectStorageCapabilityContext? commandContext) => commandContext is null ? null : new(
+            new(commandContext.AccountId ?? "acct_local_dev"),
+            new(commandContext.AppInstallationId ?? "inst_local_dev_scheduling"),
+            commandContext.AppId ?? "scheduling",
+            LeviathanRequestContextAccessor.LocalDevUserId,
+            "req_test",
+            commandContext.CorrelationId,
+            UnsafeLocalDev: true,
+            TrustedInternal: commandContext.TrustedInternal);
+    }
+
+    private sealed class FakeCapabilityPolicy(IReadOnlyDictionary<string, LeviathanCapabilityDecision> decisions) : ILeviathanCapabilityPolicy
+    {
+        private readonly List<string> _seen = [];
+        public string[] SeenCapabilities => _seen.ToArray();
+        public static FakeCapabilityPolicy Allow(string capability, string grantId = "grant_ok") => new(new Dictionary<string, LeviathanCapabilityDecision> { [capability] = Decision(capability, true, grantId) });
+        public static LeviathanCapabilityDecision Decision(string capability, bool allowed, string? grantId = null, string reason = "allowed") => new(allowed, allowed ? reason : "capability_grant_missing", grantId is null ? null : new(grantId), new(DateTimeOffset.UtcNow, "acct_local_dev", "inst_local_dev_scheduling", "scheduling", capability, "test", "object", "safe", allowed, allowed ? reason : "capability_grant_missing", grantId, "corr", "req"));
+        public Task<LeviathanCapabilityDecision> Evaluate(LeviathanRequestContext? context, LeviathanCapabilityCheck check)
+        {
+            _seen.Add(check.CapabilityName.Value);
+            return Task.FromResult(decisions.TryGetValue(check.CapabilityName.Value, out var d) ? d : Decision(check.CapabilityName.Value, false));
+        }
     }
 
     private sealed class TestEnvironment : IWebHostEnvironment

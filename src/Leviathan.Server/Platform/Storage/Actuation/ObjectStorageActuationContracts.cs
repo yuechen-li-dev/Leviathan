@@ -7,7 +7,11 @@ public sealed record ObjectStorageCapabilityContext(
     string? AppId = null,
     string? AppInstallationId = null,
     string? CapabilityGrantId = null,
-    string? CorrelationId = null);
+    string? CorrelationId = null,
+    string? ActorUserId = null,
+    string? RequestId = null,
+    bool LocalDev = false,
+    bool TrustedInternal = false);
 
 public sealed record ObjectPutCommand(
     string Key,
@@ -45,9 +49,11 @@ public sealed record ObjectResultMetadata(string? ContentType, long? ContentLeng
 
 public sealed record ObjectListItem(string Key, ObjectResultMetadata Metadata);
 
-public sealed record ObjectPutResult(bool Ok, string Key, ObjectResultMetadata? Metadata = null, string? ErrorCode = null, string? ErrorMessage = null);
-public sealed record ObjectGetResult(bool Ok, string Key, byte[]? Bytes = null, string? Text = null, ObjectResultMetadata? Metadata = null, string? ErrorCode = null, string? ErrorMessage = null);
-public sealed record ObjectExistsResult(bool Ok, string Key, bool Exists, string? ErrorCode = null, string? ErrorMessage = null);
-public sealed record ObjectDeleteResult(bool Ok, string Key, bool Deleted, string? ErrorCode = null, string? ErrorMessage = null);
-public sealed record ObjectListResult(bool Ok, string Prefix, IReadOnlyList<ObjectListItem> Items, string? ErrorCode = null, string? ErrorMessage = null);
-public sealed record ObjectAppendResult(bool Ok, string Key, ObjectResultMetadata? Metadata = null, string? ErrorCode = null, string? ErrorMessage = null);
+public sealed record ObjectCapabilityDecision(string CapabilityName, bool Allowed, string ReasonCode, string? GrantId = null, string? CorrelationId = null);
+
+public sealed record ObjectPutResult(bool Ok, string Key, ObjectResultMetadata? Metadata = null, string? ErrorCode = null, string? ErrorMessage = null, ObjectCapabilityDecision? Decision = null);
+public sealed record ObjectGetResult(bool Ok, string Key, byte[]? Bytes = null, string? Text = null, ObjectResultMetadata? Metadata = null, string? ErrorCode = null, string? ErrorMessage = null, ObjectCapabilityDecision? Decision = null);
+public sealed record ObjectExistsResult(bool Ok, string Key, bool Exists, string? ErrorCode = null, string? ErrorMessage = null, ObjectCapabilityDecision? Decision = null);
+public sealed record ObjectDeleteResult(bool Ok, string Key, bool Deleted, string? ErrorCode = null, string? ErrorMessage = null, ObjectCapabilityDecision? Decision = null);
+public sealed record ObjectListResult(bool Ok, string Prefix, IReadOnlyList<ObjectListItem> Items, string? ErrorCode = null, string? ErrorMessage = null, ObjectCapabilityDecision? Decision = null);
+public sealed record ObjectAppendResult(bool Ok, string Key, ObjectResultMetadata? Metadata = null, string? ErrorCode = null, string? ErrorMessage = null, ObjectCapabilityDecision? Decision = null);

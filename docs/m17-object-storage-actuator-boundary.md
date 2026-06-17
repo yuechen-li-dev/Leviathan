@@ -103,3 +103,7 @@ Good next options:
 * reminder/notification contract without provider integration;
 * object storage cloud adapter preflight;
 * product metadata/query-plane preflight.
+
+## M18 update: capability context
+
+M18 adds policy-enforced mode for object-storage actuation. In trusted-internal mode the M17 behavior remains available for platform/internal paths. In policy-enforced mode, the handler resolves Leviathan actuation context, maps each object command to `object.read`, `object.write`, `object.list`, or `object.delete`, calls `ILeviathanCapabilityPolicy`, returns controlled `capability_denied` results, and emits capability decision metadata on object operation events.
