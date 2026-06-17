@@ -22,6 +22,9 @@ public interface SchedulingStore
     Task SaveBooking(Booking booking, CancellationToken ct = default);
     Task<Booking?> GetBooking(BookingId id, CancellationToken ct = default);
     Task<IReadOnlyList<Booking>> GetBookings(ProviderId providerId, ResourceId? resourceId = null, CancellationToken ct = default);
+    Task SaveNotification(ScheduledNotification notification, CancellationToken ct = default);
+    Task<ScheduledNotification?> GetNotification(NotificationId id, CancellationToken ct = default);
+    Task<IReadOnlyList<ScheduledNotification>> GetNotifications(ProviderId providerId, BookingId bookingId, CancellationToken ct = default);
     Task AppendAudit(BookingAuditEvent evt, CancellationToken ct = default);
     Task<IReadOnlyList<BookingAuditEvent>> GetBookingAudit(ProviderId providerId, BookingId bookingId, CancellationToken ct = default);
 }

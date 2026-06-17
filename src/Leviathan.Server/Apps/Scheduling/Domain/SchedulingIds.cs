@@ -6,3 +6,4 @@ public sealed record ServiceId(string Value) { public override string ToString()
 public sealed record AvailabilityRuleId(string Value) { public override string ToString() => Value; public static AvailabilityRuleId New() => new($"avail_{Guid.NewGuid():N}"); }
 public sealed record HoldId(string Value) { public override string ToString() => Value; public static HoldId New() => new($"hold_{Guid.NewGuid():N}"); }
 public sealed record BookingId(string Value) { public override string ToString() => Value; public static BookingId New() => new($"book_{Guid.NewGuid():N}"); }
+public sealed record NotificationId(string Value) { public override string ToString() => Value; public static NotificationId New() => new($"ntf_{Guid.NewGuid():N}"); }

@@ -97,3 +97,8 @@ Backend tests cover service deposit/prepay policy, minor-unit money and ISO curr
 - Provider UX/demo polish for reschedule/payment labels.
 - Product metadata/query-plane preflight.
 - Real payment connector integration only after external connectors and authority grants are ready.
+
+
+## M21 notification adjacency
+
+M21 keeps payment policy separate from notification policy. Payment-required confirmation behavior is unchanged; notification records may be scheduled around booking lifecycle events but do not create real payment prompts, checkouts, refunds, emails, SMS, or webhooks.
