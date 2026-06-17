@@ -47,12 +47,12 @@ function safeSegment(value: string): string {
 export async function captureLeviathanUiHandoffBundle(
   page: Page,
   testInfo: TestInfo,
-  options: { name: string; route: string },
+  options: { name: string; route: string; artifactRoot?: string },
 ): Promise<HandoffSnapshotResult> {
   await expect(page.locator("[data-machina-root-id]")).toBeVisible();
 
   const projectRoot = path.resolve(testInfo.config.rootDir, "..");
-  const outputDir = path.join(projectRoot, "test-results", "ui-snapshots", safeSegment(options.name));
+  const outputDir = path.join(projectRoot, "test-results", options.artifactRoot ?? "ui-snapshots", safeSegment(options.name));
   await mkdir(outputDir, { recursive: true });
 
   const domSummary = await page.evaluate(() => {

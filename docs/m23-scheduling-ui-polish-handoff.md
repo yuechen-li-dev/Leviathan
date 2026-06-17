@@ -192,3 +192,14 @@ Each bundle contains:
 - Add product metadata/query-plane preflight work.
 - Add notification actuator command/event skeleton work.
 - Only attempt real provider connector integration once authority and connectors are ready.
+
+## M24 follow-up
+
+M24 keeps the M23 fixture-state workflow but adds a separate real-backend smoke path:
+
+- fixture smoke remains on `npm run test:e2e`;
+- real backend smoke now runs on `npm run test:e2e:real`;
+- live artifacts now write under `src/Leviathan.Web/test-results/ui-snapshots-real/`;
+- Scheduling routes without `fixture=` now render a minimal live backend path for setup, booking, confirmation, bookings, audit/lifecycle, and cancellation.
+
+See `docs/m24-scheduling-real-backend-smoke.md` for the real-path journey and fixture parity findings.

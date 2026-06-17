@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:real": "set LEVIATHAN_REAL_SMOKE=1&& playwright test tests/scheduling-real-backend-smoke.spec.ts",
     "test:e2e:headed": "playwright test --headed",
     "ui:snapshot": "playwright test tests/ui-snapshot.spec.ts",
     "cap:sync": "npm run build && npx cap sync android",

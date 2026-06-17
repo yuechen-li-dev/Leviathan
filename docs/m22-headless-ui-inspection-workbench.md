@@ -167,3 +167,13 @@ npm run test:e2e
 ```
 
 See [docs/m23-scheduling-ui-polish-handoff.md](C:\Users\yuech\source\repos\Leviathan\docs\m23-scheduling-ui-polish-handoff.md) for the expanded route/state matrix and artifact folders.
+
+## M24 follow-up
+
+M24 does not replace this workbench. It layers a separate real-backend smoke route on top of it:
+
+- `npm run test:e2e` stays fixture/mock oriented;
+- `npm run test:e2e:real` starts the ASP.NET backend plus the frontend preview and captures live Scheduling artifacts;
+- the same handoff helper now supports a second artifact root at `src/Leviathan.Web/test-results/ui-snapshots-real/`.
+
+See [docs/m24-scheduling-real-backend-smoke.md](C:\Users\yuech\source\repos\Leviathan\docs\m24-scheduling-real-backend-smoke.md).
