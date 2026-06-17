@@ -449,6 +449,74 @@ public sealed class SchedulingM8Tests
         Assert.Equal("prov_public_m15", publicFetch!.Id.Value);
     }
 
+
+    [Fact]
+    public async Task M21_notification_policy_schedules_cancels_reschedules_and_fake_sends_without_contact_data_audit()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var provider = (await (await client.PostAsJsonAsync("/api/apps/scheduling/providers", new CreateProviderRequest("m21-notify", "M21 Notify", "UTC", null, null))).Content.ReadFromJsonAsync<Provider>())!;
+        var resource = (await (await client.PostAsJsonAsync("/api/apps/scheduling/resources", new CreateResourceRequest(provider.Id.Value, "Room A", "room", "UTC"))).Content.ReadFromJsonAsync<BookableResource>())!;
+        var second = (await (await client.PostAsJsonAsync("/api/apps/scheduling/resources", new CreateResourceRequest(provider.Id.Value, "Room B", "room", "UTC"))).Content.ReadFromJsonAsync<BookableResource>())!;
+        var rules = new[] { new NotificationRule(NotificationTriggers.BookingConfirmed, NotificationChannels.App, "customer", "booking_confirmed_app"), new NotificationRule(NotificationTriggers.BeforeBookingStart, NotificationChannels.Email, "provider", "provider_reminder", 120) };
+        var policy = new SchedulingNotificationPolicy(true, rules);
+        var service = (await (await client.PostAsJsonAsync("/api/apps/scheduling/services", new CreateServiceRequest(provider.Id.Value, "Notify Consult", null, 30, NotificationPolicy: policy))).Content.ReadFromJsonAsync<SchedulingService>())!;
+        await client.PostAsJsonAsync($"/api/apps/scheduling/services/{service.Id.Value}/resources", new AssignResourceRequest(provider.Id.Value, resource.Id.Value));
+        await client.PostAsJsonAsync($"/api/apps/scheduling/services/{service.Id.Value}/resources", new AssignResourceRequest(provider.Id.Value, second.Id.Value));
+        var old = await ConfirmBooking(client, provider.Id.Value, service.Id.Value, resource.Id.Value, DateTimeOffset.Parse("2030-01-07T09:00:00Z"));
+
+        var notifications = (await client.GetFromJsonAsync<ScheduledNotification[]>($"/api/apps/scheduling/bookings/{old.Id.Value}/notifications"))!;
+        Assert.Equal(2, notifications.Length);
+        Assert.All(notifications, n => Assert.Equal(NotificationStatuses.Pending, n.Status));
+        Assert.Contains(notifications, n => n.Trigger == NotificationTriggers.BeforeBookingStart && n.ScheduledForUtc == old.Range.StartsAtUtc.AddMinutes(-120));
+        var audit = (await client.GetFromJsonAsync<BookingAuditEvent[]>($"/api/apps/scheduling/bookings/{old.Id.Value}/audit?providerId={provider.Id.Value}"))!;
+        Assert.Contains(audit, e => e.EventType == "notification_policy_applied");
+        Assert.DoesNotContain(audit.Where(e => e.EventType.StartsWith("notification_")), e => e.Data.Values.Any(v => v.Contains("ada@example.test", StringComparison.OrdinalIgnoreCase)));
+
+        var fake = await client.PostAsJsonAsync($"/api/apps/scheduling/notifications/{notifications[0].Id.Value}/fake-send", new FakeSendNotificationRequest("test"));
+        fake.EnsureSuccessStatusCode();
+        notifications = (await client.GetFromJsonAsync<ScheduledNotification[]>($"/api/apps/scheduling/bookings/{old.Id.Value}/notifications"))!;
+        Assert.Contains(notifications, n => n.Id == notifications[0].Id && n.Status == NotificationStatuses.SentFake);
+        audit = (await client.GetFromJsonAsync<BookingAuditEvent[]>($"/api/apps/scheduling/bookings/{old.Id.Value}/audit?providerId={provider.Id.Value}"))!;
+        Assert.Contains(audit, e => e.EventType == "notification_sent_fake");
+
+        var replacement = await client.PostAsJsonAsync($"/api/apps/scheduling/bookings/{old.Id.Value}/reschedule/holds", new CreateReplacementHoldRequest(service.Id.Value, second.Id.Value, DateTimeOffset.Parse("2030-01-07T10:00:00Z"), DateTimeOffset.Parse("2030-01-07T10:30:00Z"), "UTC", null, "customer_request", null, "test"));
+        replacement.EnsureSuccessStatusCode();
+        var repl = (await replacement.Content.ReadFromJsonAsync<ReplacementHoldResponse>())!;
+        await client.PostAsJsonAsync($"/api/apps/scheduling/holds/{repl.ReplacementHoldId}/intake", new SubmitIntakeRequest(repl.ClaimToken, "Ada", "ada@example.test", null, null));
+        var confirmed = await client.PostAsJsonAsync("/api/apps/scheduling/bookings/confirm", new ConfirmBookingRequest(repl.ReplacementHoldId, repl.ClaimToken, null));
+        confirmed.EnsureSuccessStatusCode();
+        var newer = (await confirmed.Content.ReadFromJsonAsync<Booking>())!;
+        Assert.Equal(old.Id, newer.RescheduledFromBookingId);
+
+        var oldNotifications = (await client.GetFromJsonAsync<ScheduledNotification[]>($"/api/apps/scheduling/bookings/{old.Id.Value}/notifications"))!;
+        Assert.Contains(oldNotifications, n => n.Status == NotificationStatuses.Cancelled);
+        var newNotifications = (await client.GetFromJsonAsync<ScheduledNotification[]>($"/api/apps/scheduling/bookings/{newer.Id.Value}/notifications"))!;
+        Assert.Equal(2, newNotifications.Count(n => n.Status == NotificationStatuses.Pending));
+    }
+
+    [Fact]
+    public async Task M21_notification_policy_none_creates_no_notification_records_and_payment_required_still_blocks()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var setup = await CreateSetup(client, "m21-none", twoResources: false);
+        var booking = await ConfirmBooking(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, DateTimeOffset.Parse("2030-01-07T11:00:00Z"));
+        var notifications = await client.GetFromJsonAsync<ScheduledNotification[]>($"/api/apps/scheduling/bookings/{booking.Id.Value}/notifications");
+        Assert.Empty(notifications!);
+
+        var provider = (await (await client.PostAsJsonAsync("/api/apps/scheduling/providers", new CreateProviderRequest("m21-pay", "M21 Pay", "UTC", null, null))).Content.ReadFromJsonAsync<Provider>())!;
+        var resource = (await (await client.PostAsJsonAsync("/api/apps/scheduling/resources", new CreateResourceRequest(provider.Id.Value, "Room A", "room", "UTC"))).Content.ReadFromJsonAsync<BookableResource>())!;
+        var pay = new SchedulingPaymentPolicy(true, false, new MoneyAmount(1000, "USD"), null, "USD", SchedulingPaymentTimings.BeforeConfirmation, SchedulingPaymentProviderModes.FakeLocal, SchedulingCancellationPaymentPolicies.RefundDeferred, SchedulingReschedulePaymentPolicies.CarryPaymentForwardDeferred);
+        var service = (await (await client.PostAsJsonAsync("/api/apps/scheduling/services", new CreateServiceRequest(provider.Id.Value, "Pay", null, 30, PaymentPolicy: pay, NotificationPolicy: SchedulingNotificationPolicy.None()))).Content.ReadFromJsonAsync<SchedulingService>())!;
+        await client.PostAsJsonAsync($"/api/apps/scheduling/services/{service.Id.Value}/resources", new AssignResourceRequest(provider.Id.Value, resource.Id.Value));
+        var hold = await Hold(client, provider.Id.Value, service.Id.Value, resource.Id.Value, DateTimeOffset.Parse("2030-01-07T12:00:00Z"), DateTimeOffset.Parse("2030-01-07T12:30:00Z"));
+        await client.PostAsJsonAsync($"/api/apps/scheduling/holds/{hold.HoldId}/intake", new SubmitIntakeRequest(hold.ClaimToken, "Ada", "ada@example.test", null, null));
+        var rejected = await client.PostAsJsonAsync("/api/apps/scheduling/bookings/confirm", new ConfirmBookingRequest(hold.HoldId, hold.ClaimToken, null));
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        Assert.Equal("payment_required", (await rejected.Content.ReadFromJsonAsync<SchedulingError>())!.Error);
+    }
+
     [Fact]
     public async Task M20_payment_required_hold_rejects_confirmation_until_fake_local_satisfied()
     {
