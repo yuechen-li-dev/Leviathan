@@ -1,5 +1,13 @@
+export type EntityId = { value: string };
+export type Provider = { id: EntityId; slug: string; displayName: string; timeZoneId: string; contactEmail?: string; publicDescription?: string };
+export type BookableResource = { id: EntityId; providerId: EntityId; displayName: string; resourceType: string; timeZoneId: string };
+export type SchedulingService = { id: EntityId; providerId: EntityId; name: string; description?: string; durationMinutes: number; assignedResourceIds: EntityId[]; isPublic: boolean };
+export type AvailabilityRule = { id: EntityId; providerId: EntityId; resourceId: EntityId; timeZoneId: string; daysOfWeek: string[]; localStartTime: string; localEndTime: string };
 export type BookableSlot = { providerId: string; serviceId: string; resourceId: string; startsAtUtc: string; endsAtUtc: string; timeZoneId: string; displayLabel: string; providerTimeZoneId: string; displayTimeZoneId: string; displayStartsAtLocal: string; displayEndsAtLocal: string };
 export type SchedulingError = { error: string; message: string };
 export type HoldResponse = { holdId: string; claimToken: string; expiresAt: string; status: string };
-export type Booking = { id: { value: string }; status: string; customer: { name: string; email: string } };
+export type Booking = { id: EntityId; providerId?: EntityId; serviceId?: EntityId; resourceId?: EntityId; status: string; customer: { name: string; email: string; phone?: string; notes?: string }; range?: { startsAtUtc: string; endsAtUtc: string; timeZoneId: string }; cancellationReasonCode?: string; cancellationMessage?: string; cancellationActor?: string; cancellationPolicyResult?: string };
+export type BookingAuditEvent = { eventId: string; eventType: string; occurredAt: string; actor?: string; message?: string; data?: Record<string, string> };
+export type SchedulingLifecycleSummary = { workflowState: string; status: string; lastDecisionCode?: string; lastAuditEventId?: string; checkpointExists?: boolean; checkpointPath?: string };
+export type CancelBookingResponse = { booking: Booking; auditEventId: string; lifecycle: SchedulingLifecycleSummary };
 export type SchedulingDispatch = { type: "scheduling.slot-selected"; slot: BookableSlot } | { type: "scheduling.hold-created"; hold: HoldResponse };
