@@ -29,6 +29,7 @@ export function reduceShellState(state: ShellState, event: LeviathanDispatch): S
   switch (event.type) {
     case "open-apps-list":
       return { ...withTableEvent(withTableEvent(state, "route.apps"), "status.loading-apps"), error: null };
+    case "open-app":
     case "open-rust-simulator-app":
       return {
         ...withTableEvent(withTableEvent(state, "route.rust-simulator"), "status.starting-session"),

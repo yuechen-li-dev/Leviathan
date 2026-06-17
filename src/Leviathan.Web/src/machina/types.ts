@@ -1,8 +1,13 @@
 export type AppManifest = {
-  id: string;
-  title: string;
+  appId: string;
+  displayName: string;
+  kind: string;
   description: string;
+  runtime: string;
+  frontendRoute: string;
+  persistenceScope: string;
   capabilities: string[];
+  metadata: Record<string, string>;
 };
 export type AriadneChoiceDto = { key: string; text: string };
 export type AriadnePromptDto = {

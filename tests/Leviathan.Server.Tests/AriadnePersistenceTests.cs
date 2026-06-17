@@ -9,6 +9,29 @@ namespace Leviathan.Server.Tests;
 
 public sealed class AriadnePersistenceTests
 {
+
+    [Fact]
+    public async Task App_registry_exposes_rust_simulator_manifest_and_app_aware_sessions()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+
+        var apps = await client.GetFromJsonAsync<LeviathanAppManifest[]>("/api/apps");
+        var manifest = Assert.Single(Assert.IsAssignableFrom<IEnumerable<LeviathanAppManifest>>(apps));
+        Assert.Equal("rust_simulator", manifest.AppId);
+        Assert.Equal("Rust Simulator", manifest.DisplayName);
+        Assert.Equal("ariadne/rust_simulator", manifest.PersistenceScope);
+        Assert.Equal("/apps/rust-simulator", manifest.FrontendRoute);
+
+        var createdResponse = await client.PostAsync("/api/apps/rust_simulator/sessions", null);
+        createdResponse.EnsureSuccessStatusCode();
+        var created = (await createdResponse.Content.ReadFromJsonAsync<CreateAriadneSessionResponse>())!;
+        var screen = await client.GetFromJsonAsync<AriadneScreenDto>($"/api/apps/rust_simulator/sessions/{created.SessionId}/screen");
+
+        Assert.NotNull(screen);
+        Assert.Equal("rust_simulator", screen.AppId);
+    }
+
     [Fact]
     public async Task Creating_session_writes_manifest_and_checkpoint()
     {
