@@ -168,3 +168,7 @@ Recommended M9/M10 Dominatus migration:
 ## M9 follow-up note
 
 M9 replaced the M8 UTC-simplified slot expansion with explicit IANA timezone conversion, safer local JSON persistence, a local-dev admin gate, richer audit decision details, and a small local `.ics` export. The MVP still intentionally avoids database, auth, payments, SMS, external calendar sync, marketplace/social features, live LLM calls, and vendor edits.
+
+## M10 note
+
+M10 keeps the M8 provider/resource/service/availability file-backed product data model intact. Only the stateful hold/intake/confirmation/expiration booking claim lifecycle gained Dominatus checkpoint files and safe lifecycle summary endpoints.

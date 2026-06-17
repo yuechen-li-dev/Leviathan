@@ -2,6 +2,7 @@ using System.Text;
 using Leviathan.Server.Apps.Scheduling.Domain;
 using Leviathan.Server.Apps.Scheduling.Engine;
 using Leviathan.Server.Apps.Scheduling.Storage;
+using Leviathan.Server.Apps.Scheduling.Runtime;
 
 namespace Leviathan.Server.Apps.Scheduling.Api;
 
@@ -31,6 +32,8 @@ public static class SchedulingEndpoints
         group.MapGet("/bookings/{bookingId}", async (string bookingId, SchedulingStore store) => await store.GetBooking(new(bookingId)) is { } b ? Results.Ok(b) : Results.NotFound(new SchedulingError("not_found", "Booking not found.")));
         group.MapGet("/bookings/{bookingId}/audit", async (string bookingId, string providerId, SchedulingStore store) => Results.Ok(await store.GetBookingAudit(new(providerId), new(bookingId))));
         group.MapGet("/bookings/{bookingId}/ics", async (string bookingId, SchedulingStore store) => await store.GetBooking(new(bookingId)) is { } b ? Results.Text(ToIcs(b), "text/calendar", Encoding.UTF8) : Results.NotFound(new SchedulingError("not_found", "Booking not found.")));
+        group.MapGet("/bookings/{bookingId}/lifecycle", async (string bookingId, SchedulingStore store, SchedulingBookingRuntime lifecycle) => await store.GetBooking(new(bookingId)) is { } b ? lifecycle.ReadByBooking(b.ProviderId, b.Id) is { } summary ? Results.Ok(summary) : Results.NotFound(new SchedulingError("not_found", "Lifecycle checkpoint not found.")) : Results.NotFound(new SchedulingError("not_found", "Booking not found.")));
+        group.MapGet("/holds/{holdId}/lifecycle", (string holdId, string providerId, SchedulingBookingRuntime lifecycle) => lifecycle.ReadByHold(new(providerId), new(holdId)) is { } summary ? Results.Ok(summary) : Results.NotFound(new SchedulingError("not_found", "Lifecycle checkpoint not found.")));
         return app;
     }
     private static string ToIcs(Booking b) => $"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Leviathan//Scheduling//EN\r\nBEGIN:VEVENT\r\nUID:{b.Id.Value}@leviathan.local\r\nDTSTAMP:{DateTimeOffset.UtcNow:yyyyMMdd'T'HHmmss'Z'}\r\nDTSTART:{b.Range.StartsAtUtc:yyyyMMdd'T'HHmmss'Z'}\r\nDTEND:{b.Range.EndsAtUtc:yyyyMMdd'T'HHmmss'Z'}\r\nSUMMARY:Booking\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";

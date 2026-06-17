@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Leviathan.Server.Ariadne;
 using Leviathan.Server.Apps.Scheduling.Api;
 using Leviathan.Server.Apps.Scheduling.Domain;
+using Leviathan.Server.Apps.Scheduling.Runtime;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
@@ -112,10 +113,68 @@ public sealed class SchedulingM8Tests
         var start = DateTimeOffset.Parse("2030-01-07T10:00:00Z");
         var hold = await Hold(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, start, start.AddMinutes(30));
         var path = Path.Combine(fixture.DataDir, "scheduling", "providers", setup.ProviderId, "holds", "active", hold.HoldId + ".json");
-        var json = await File.ReadAllTextAsync(path);
-        await File.WriteAllTextAsync(path, json.Replace(hold.ExpiresAt.ToString("O"), DateTimeOffset.UtcNow.AddMinutes(-1).ToString("O")));
+        var stored = (await System.Text.Json.JsonSerializer.DeserializeAsync<Hold>(File.OpenRead(path), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)))!;
+        await File.WriteAllTextAsync(path, System.Text.Json.JsonSerializer.Serialize(stored with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
         var released = await Hold(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, start, start.AddMinutes(30));
         Assert.Equal("active", released.Status);
+    }
+
+
+    [Fact]
+    public async Task Dominatus_lifecycle_checkpoints_advance_and_restore_summary()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var setup = await CreateSetup(client, "m10-life", twoResources: false);
+        var start = DateTimeOffset.Parse("2030-01-07T09:00:00Z");
+
+        var hold = await Hold(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, start, start.AddMinutes(30));
+        var holdCheckpoint = Path.Combine(fixture.DataDir, "scheduling", "providers", setup.ProviderId, "holds", "active", hold.HoldId, "lifecycle.dom1");
+        Assert.True(File.Exists(holdCheckpoint));
+        var holdLifecycle = await client.GetFromJsonAsync<SchedulingLifecycleSummary>($"/api/apps/scheduling/holds/{hold.HoldId}/lifecycle?providerId={setup.ProviderId}");
+        Assert.Equal("AwaitingIntake", holdLifecycle!.CurrentWorkflowState);
+        Assert.True(holdLifecycle.HasCheckpoint);
+
+        var intake = await client.PostAsJsonAsync($"/api/apps/scheduling/holds/{hold.HoldId}/intake", new SubmitIntakeRequest(hold.ClaimToken, "Ada", "ada@example.test", null, null));
+        intake.EnsureSuccessStatusCode();
+        var intakeLifecycle = await client.GetFromJsonAsync<SchedulingLifecycleSummary>($"/api/apps/scheduling/holds/{hold.HoldId}/lifecycle?providerId={setup.ProviderId}");
+        Assert.Equal("IntakeSubmitted", intakeLifecycle!.CurrentWorkflowState);
+        Assert.False(string.IsNullOrWhiteSpace(intakeLifecycle.LastAuditEventId));
+
+        var bookingResponse = await client.PostAsJsonAsync("/api/apps/scheduling/bookings/confirm", new ConfirmBookingRequest(hold.HoldId, hold.ClaimToken, null));
+        bookingResponse.EnsureSuccessStatusCode();
+        var booking = (await bookingResponse.Content.ReadFromJsonAsync<Booking>())!;
+        var bookingCheckpoint = Path.Combine(fixture.DataDir, "scheduling", "providers", setup.ProviderId, "bookings", booking.Id.Value, "lifecycle.dom1");
+        Assert.True(File.Exists(bookingCheckpoint));
+        var bookingLifecycle = await client.GetFromJsonAsync<SchedulingLifecycleSummary>($"/api/apps/scheduling/bookings/{booking.Id.Value}/lifecycle");
+        Assert.Equal("Confirmed", bookingLifecycle!.CurrentWorkflowState);
+        Assert.Equal(booking.Id.Value, bookingLifecycle.BookingId);
+        Assert.False(string.IsNullOrWhiteSpace(bookingLifecycle.LastAuditEventId));
+
+        var audit = await client.GetFromJsonAsync<BookingAuditEvent[]>($"/api/apps/scheduling/bookings/{booking.Id.Value}/audit?providerId={setup.ProviderId}");
+        var confirmed = Assert.Single(audit!, e => e.EventType == "booking_confirmed");
+        Assert.Equal("Confirmed", confirmed.Data["lifecycleState"]);
+        Assert.EndsWith("lifecycle.dom1", confirmed.Data["lifecycleCheckpoint"]);
+    }
+
+    [Fact]
+    public async Task Expired_hold_advances_lifecycle_to_expired()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var setup = await CreateSetup(client, "m10-expire", twoResources: false);
+        var start = DateTimeOffset.Parse("2030-01-07T11:00:00Z");
+        var hold = await Hold(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, start, start.AddMinutes(30));
+        var path = Path.Combine(fixture.DataDir, "scheduling", "providers", setup.ProviderId, "holds", "active", hold.HoldId + ".json");
+        var stored = (await System.Text.Json.JsonSerializer.DeserializeAsync<Hold>(File.OpenRead(path), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)))!;
+        await File.WriteAllTextAsync(path, System.Text.Json.JsonSerializer.Serialize(stored with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+
+        var response = await client.PostAsJsonAsync($"/api/apps/scheduling/holds/{hold.HoldId}/intake", new SubmitIntakeRequest(hold.ClaimToken, "Ada", "ada@example.test", null, null));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var lifecycle = await client.GetFromJsonAsync<SchedulingLifecycleSummary>($"/api/apps/scheduling/holds/{hold.HoldId}/lifecycle?providerId={setup.ProviderId}");
+        Assert.Equal("Expired", lifecycle!.CurrentWorkflowState);
+        Assert.Equal("expired", lifecycle.Status);
+        Assert.False(string.IsNullOrWhiteSpace(lifecycle.LastAuditEventId));
     }
 
     private static async Task<(string ProviderId, string ServiceId, string ResourceId, string? SecondResourceId)> CreateSetup(HttpClient client, string slug, bool twoResources, string timeZone = "UTC")

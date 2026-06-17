@@ -58,7 +58,14 @@ public sealed class SchedulingFileStore(IConfiguration config) : SchedulingStore
     public Task<IReadOnlyList<AvailabilityRule>> GetAvailabilityRules(ProviderId providerId, CancellationToken ct = default) => ReadAll<AvailabilityRule>(Path.Combine(ProviderDir(providerId), "availability-rules"), "*.json", ct);
     public Task SaveHold(Hold hold, CancellationToken ct = default) => Write(Path.Combine(ProviderDir(hold.ProviderId), "holds", "active", hold.Id.Value + ".json"), hold, ct);
     public async Task<Hold?> GetHold(HoldId id, CancellationToken ct = default) { if (!Directory.Exists(_root)) return null; foreach (var file in Directory.EnumerateFiles(_root, id.Value + ".json", SearchOption.AllDirectories)) return await Read<Hold>(file, ct); return null; }
-    public async Task<IReadOnlyList<Hold>> GetActiveHolds(ProviderId providerId, ResourceId resourceId, DateTimeOffset now, CancellationToken ct = default) => (await ReadAll<Hold>(Path.Combine(ProviderDir(providerId), "holds", "active"), "*.json", ct)).Where(h => h.ResourceId == resourceId && h.Status == "active" && h.ExpiresAt > now).ToArray();
+    public async Task<IReadOnlyList<Hold>> GetActiveHolds(ProviderId providerId, ResourceId resourceId, DateTimeOffset now, CancellationToken ct = default)
+    {
+        var dir = Path.Combine(ProviderDir(providerId), "holds", "active");
+        if (!Directory.Exists(dir)) return [];
+        var values = new List<Hold>();
+        foreach (var file in Directory.EnumerateFiles(dir, "*.json", SearchOption.TopDirectoryOnly)) { var value = await Read<Hold>(file, ct); if (value is not null) values.Add(value); }
+        return values.Where(h => h.ResourceId == resourceId && h.Status == "active" && h.ExpiresAt > now).ToArray();
+    }
     public async Task ExpireHold(Hold hold, CancellationToken ct = default) { var expired = hold with { Status = hold.Status == "active" ? "expired" : hold.Status }; var from = Path.Combine(ProviderDir(hold.ProviderId), "holds", "active", hold.Id.Value + ".json"); var to = Path.Combine(ProviderDir(hold.ProviderId), "holds", expired.Status == "expired" ? "expired" : "consumed", hold.Id.Value + ".json"); await Write(to, expired, ct); if (File.Exists(from)) File.Delete(from); }
     public Task SaveBooking(Booking booking, CancellationToken ct = default) => Write(Path.Combine(ProviderDir(booking.ProviderId), "bookings", booking.Id.Value, "booking.json"), booking, ct);
     public async Task<Booking?> GetBooking(BookingId id, CancellationToken ct = default) { if (!Directory.Exists(_root)) return null; foreach (var file in Directory.EnumerateFiles(_root, "booking.json", SearchOption.AllDirectories)) { var b = await Read<Booking>(file, ct); if (b?.Id == id) return b; } return null; }
