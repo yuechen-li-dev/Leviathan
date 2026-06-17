@@ -306,3 +306,7 @@ dotnet test
 ```
 
 No frontend install/build/test is required because only documentation changed.
+
+## M15 update
+
+M15 implements the first local capability skeleton from this preflight: platform-owned capability names, grant records, a local file-backed grant store, a policy evaluator, and audit envelopes. App manifest capability strings are now treated as declarations rather than grants; Scheduling declares `admin.provider.configure`, while the local-dev grant authorizes use for `acct_local_dev` and `inst_local_dev_scheduling`.

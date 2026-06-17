@@ -5,7 +5,9 @@ using Leviathan.Server.Apps.Scheduling.Engine;
 using Leviathan.Server.Apps.Scheduling.Storage;
 using Leviathan.Server.Apps.Scheduling.Runtime;
 using Leviathan.Server.Platform.Apps;
+using Leviathan.Server.Platform.Capabilities;
 using Leviathan.Server.Platform.Identity;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<AriadneSessionPersistence>();
@@ -21,7 +23,10 @@ builder.Services.AddSingleton<LeviathanAppRegistry>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<ILeviathanRequestContextAccessor, LeviathanRequestContextAccessor>();
 builder.Services.AddSingleton<LeviathanLocalDevAppInstallations>();
+builder.Services.AddSingleton<ILeviathanCapabilityStore, LeviathanLocalCapabilityStore>();
+builder.Services.AddSingleton<ILeviathanCapabilityPolicy, LeviathanCapabilityPolicy>();
 builder.Services.AddSingleton<AriadneSessionManager>();
+builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
@@ -31,7 +36,10 @@ var app = builder.Build();
 app.UseCors();
 
 app.MapGet("/api/apps", (LeviathanAppRegistry registry) => Results.Ok(registry.Apps));
-app.MapGet("/api/platform/local-dev/context", (ILeviathanRequestContextAccessor ctx, LeviathanLocalDevAppInstallations installs) => ctx.Current is { } c ? Results.Ok(new { c.ActorKind, UserId = c.UserId.Value, AccountId = c.AccountId.Value, UnsafeLocalDev = c.UnsafeLocalDev, c.RequestId, SchedulingInstallation = installs.Scheduling }) : Results.Json(new { error = "unsafe_admin_disabled", message = "Local-dev context is only available when LEVIATHAN_ALLOW_UNSAFE_ADMIN=true." }, statusCode: StatusCodes.Status403Forbidden));
+app.MapGet("/api/platform/local-dev/context", async (ILeviathanRequestContextAccessor ctx, LeviathanLocalDevAppInstallations installs, ILeviathanCapabilityStore capabilities) => ctx.Current is { } c ? Results.Ok(new { c.ActorKind, UserId = c.UserId.Value, AccountId = c.AccountId.Value, UnsafeLocalDev = c.UnsafeLocalDev, c.RequestId, SchedulingInstallation = installs.Scheduling, CapabilityGrants = await capabilities.GetGrants(c.AccountId) }) : Results.Json(new { error = "unsafe_admin_disabled", message = "Local-dev context is only available when LEVIATHAN_ALLOW_UNSAFE_ADMIN=true." }, statusCode: StatusCodes.Status403Forbidden));
+app.MapGet("/api/platform/capabilities", () => Results.Ok(LeviathanCapabilityNames.WellKnown));
+app.MapGet("/api/platform/local-dev/capability-grants", async (ILeviathanRequestContextAccessor ctx, ILeviathanCapabilityStore store) => ctx.Current is { } c ? Results.Ok(await store.GetGrants(c.AccountId)) : Results.Json(new { error = "unsafe_admin_disabled", message = "Local-dev capability grants are only available when LEVIATHAN_ALLOW_UNSAFE_ADMIN=true." }, statusCode: StatusCodes.Status403Forbidden));
+app.MapGet("/api/platform/local-dev/capability-decisions/recent", (ILeviathanRequestContextAccessor ctx, ILeviathanCapabilityStore store) => ctx.Current is { } ? Results.Ok(store.RecentDecisions) : Results.Json(new { error = "unsafe_admin_disabled", message = "Local-dev capability decisions are only available when LEVIATHAN_ALLOW_UNSAFE_ADMIN=true." }, statusCode: StatusCodes.Status403Forbidden));
 app.MapSchedulingEndpoints();
 
 app.MapGet("/api/apps/{appId}", (string appId, LeviathanAppRegistry registry) =>

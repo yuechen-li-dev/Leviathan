@@ -106,3 +106,7 @@ M14 backend coverage verifies:
 ## Recommended M15
 
 Add a capability model skeleton: capability records, grants, a policy evaluator, app-requested capabilities, and an audit envelope, still without external providers.
+
+## M15 update
+
+M15 keeps the M14 unsafe local-dev context and ownership checks, but Scheduling admin/provider endpoints now also require an allowed `admin.provider.configure` platform capability decision. The deterministic local-dev Scheduling installation receives a bootstrap grant for this capability unless local-dev capability bootstrapping is disabled for tests. Public booking endpoints remain outside this admin capability check.
