@@ -164,3 +164,7 @@ Recommended M9/M10 Dominatus migration:
 - Improve provider setup UX from skeletal screens to guided forms.
 - Introduce a minimal local/dev identity boundary before any external use.
 - Harden timezone expansion with real IANA timezone conversion.
+
+## M9 follow-up note
+
+M9 replaced the M8 UTC-simplified slot expansion with explicit IANA timezone conversion, safer local JSON persistence, a local-dev admin gate, richer audit decision details, and a small local `.ics` export. The MVP still intentionally avoids database, auth, payments, SMS, external calendar sync, marketplace/social features, live LLM calls, and vendor edits.
