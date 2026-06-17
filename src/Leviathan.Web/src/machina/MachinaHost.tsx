@@ -20,6 +20,13 @@ import {
 import { resolveApiBaseUrl } from "./apiConfig";
 import { viewRegistry } from "./views";
 
+declare global {
+  interface Window {
+    __LEVIATHAN_DEBUG_SNAPSHOT__?: unknown;
+    __LEVIATHAN_GET_DEBUG_SNAPSHOT__?: () => unknown;
+  }
+}
+
 const viewport = (): Rect => ({
   x: 0,
   y: 0,
@@ -96,6 +103,32 @@ export function MachinaHost() {
   };
   const viewData = { ...doc.viewData, appList: { apps: state.apps, error: state.error, status: state.status }, debugInspector };
   const nodeData = useMemo(() => Object.fromEntries(Object.keys(layout.nodes).map((id) => [id, { dispatch }])), [layout.nodes, dispatch]);
+
+  useEffect(() => {
+    if (!debugEnabled) {
+      delete window.__LEVIATHAN_DEBUG_SNAPSHOT__;
+      delete window.__LEVIATHAN_GET_DEBUG_SNAPSHOT__;
+      return;
+    }
+
+    const payload = {
+      snapshot,
+      shellSummary: debugInspector.shellSummary,
+      layoutNodes,
+      recentEvents,
+      promptMapping: debugInspector.promptMapping,
+      fullState: state,
+      inspectorOpen,
+    };
+
+    window.__LEVIATHAN_DEBUG_SNAPSHOT__ = payload;
+    window.__LEVIATHAN_GET_DEBUG_SNAPSHOT__ = () => payload;
+
+    return () => {
+      delete window.__LEVIATHAN_DEBUG_SNAPSHOT__;
+      delete window.__LEVIATHAN_GET_DEBUG_SNAPSHOT__;
+    };
+  }, [debugEnabled, snapshot, debugInspector.shellSummary, layoutNodes, recentEvents, debugInspector.promptMapping, state, inspectorOpen]);
 
   return (
     <>

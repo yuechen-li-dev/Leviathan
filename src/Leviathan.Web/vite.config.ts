@@ -6,6 +6,9 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
   },
+  test: {
+    exclude: ["tests/**", "playwright.config.ts"],
+  },
   server: {
     proxy: {
       '/api': 'http://localhost:5188',

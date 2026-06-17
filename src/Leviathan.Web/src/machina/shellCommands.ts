@@ -9,6 +9,7 @@ const defaultDeps: ShellCommandDeps = { request: api };
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const legacyRustSessionKey = "leviathan.rustSimulator.lastSessionId";
 const sessionKeyForApp = (appId: string) => `leviathan.${appId}.lastSessionId`;
+const isSessionBackedApp = (appId: string) => appId === "rust_simulator";
 
 const rememberSession = (screen: AriadneScreenDto) => window.localStorage.setItem(sessionKeyForApp(screen.appId ?? "rust_simulator"), screen.sessionId);
 const forgetSession = (appId: string) => {
@@ -17,9 +18,9 @@ const forgetSession = (appId: string) => {
 };
 
 export function commandForEvent(event: LeviathanDispatch): boolean {
+  if (event.type === "open-app") return isSessionBackedApp(event.appId);
   return [
     "open-apps-list",
-    "open-app",
     "open-rust-simulator-app",
     "start-ariadne-session",
     "advance-prompt",
@@ -42,6 +43,7 @@ export async function runShellCommand(
     }
     if (event.type === "open-rust-simulator-app" || event.type === "open-app") {
       const appId = event.type === "open-rust-simulator-app" ? "rust_simulator" : event.appId;
+      if (!isSessionBackedApp(appId)) return;
       const sessionId = event.sessionId ?? window.localStorage.getItem(sessionKeyForApp(appId)) ?? (appId === "rust_simulator" ? window.localStorage.getItem(legacyRustSessionKey) : null);
       if (sessionId) {
         const screen = await deps.request<AriadneScreenDto>(`/apps/${encodeURIComponent(appId)}/sessions/${sessionId}/screen`);
