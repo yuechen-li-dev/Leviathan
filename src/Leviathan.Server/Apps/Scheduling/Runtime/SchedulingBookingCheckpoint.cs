@@ -21,7 +21,9 @@ public sealed record SchedulingBookingCheckpoint(
     DateTimeOffset ExpiresAt,
     string? RescheduledFromBookingId = null,
     string? RescheduledToBookingId = null,
-    string? ReplacementHoldId = null);
+    string? ReplacementHoldId = null,
+    string PaymentRequirementStatus = "not_required",
+    string? PaymentReference = null);
 
 public sealed record SchedulingLifecycleSummary(
     string Status,
@@ -39,4 +41,6 @@ public sealed record SchedulingLifecycleSummary(
     DateTimeOffset ExpiresAt,
     string? RescheduledFromBookingId = null,
     string? RescheduledToBookingId = null,
-    string? ReplacementHoldId = null);
+    string? ReplacementHoldId = null,
+    string PaymentRequirementStatus = "not_required",
+    string? PaymentReference = null);

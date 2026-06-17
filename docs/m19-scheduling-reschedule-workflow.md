@@ -166,3 +166,8 @@ Good M20 options:
 - payment/deposit contract preparation without real providers;
 - product metadata/query-plane preflight;
 - provider UX/demo polish for reschedule.
+
+
+## M20 payment-policy note
+
+M20 preserves the M19 safe reschedule invariant. Payment transfer/carry-forward is represented only as deferred policy metadata; no refund, ledger, provider call, or real payment transfer is performed.
