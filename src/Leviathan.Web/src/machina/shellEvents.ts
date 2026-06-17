@@ -32,4 +32,6 @@ export type RouteEvent = Extract<LeviathanDispatch, { type: "open-apps-list" | "
 export const eventForRoute = (route: ShellRoute, source: RouteEvent["source"] = "user"): RouteEvent =>
   route === "rust-simulator"
     ? { type: "open-rust-simulator-app", source }
-    : { type: "open-apps-list", source };
+    : route === "scheduling"
+      ? { type: "open-app", appId: "scheduling", source }
+      : { type: "open-apps-list", source };

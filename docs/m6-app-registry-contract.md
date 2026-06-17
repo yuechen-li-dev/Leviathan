@@ -119,3 +119,7 @@ A future scheduling app should add a new statically registered `ILeviathanSessio
 ## Recommended M7
 
 Scheduling App Pre-M0: design the first commercial Leviathan app using this registry contract before implementing scheduling features.
+
+## M8 Scheduling registration update
+
+The registry now indexes generic `ILeviathanAppDefinition` registrations for discovery while keeping `ILeviathanSessionApp` as the narrower contract for apps that support app-aware session endpoints. This allows the M8 `scheduling` app to appear in `GET /api/apps` with runtime `scheduling.local.v1` and persistence scope `scheduling` without forcing Scheduling into the Ariadne session runtime.

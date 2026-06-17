@@ -1,8 +1,18 @@
 using Leviathan.Server.Ariadne;
+using Leviathan.Server.Apps.Scheduling;
+using Leviathan.Server.Apps.Scheduling.Api;
+using Leviathan.Server.Apps.Scheduling.Engine;
+using Leviathan.Server.Apps.Scheduling.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<AriadneSessionPersistence>();
 builder.Services.AddSingleton<ILeviathanSessionApp, RustSimulatorAppDefinition>();
+builder.Services.AddSingleton<ILeviathanAppDefinition, RustSimulatorAppDefinition>(sp => (RustSimulatorAppDefinition)sp.GetRequiredService<ILeviathanSessionApp>());
+builder.Services.AddSingleton<ILeviathanAppDefinition, SchedulingAppDefinition>();
+builder.Services.AddSingleton<SchedulingStore, SchedulingFileStore>();
+builder.Services.AddSingleton<ResourceLockRegistry>();
+builder.Services.AddSingleton<BookingClaimService>();
+builder.Services.AddSingleton<SlotGenerator>();
 builder.Services.AddSingleton<LeviathanAppRegistry>();
 builder.Services.AddSingleton<AriadneSessionManager>();
 builder.Services.AddCors(options =>
@@ -14,6 +24,8 @@ var app = builder.Build();
 app.UseCors();
 
 app.MapGet("/api/apps", (LeviathanAppRegistry registry) => Results.Ok(registry.Apps));
+app.MapSchedulingEndpoints();
+
 app.MapGet("/api/apps/{appId}", (string appId, LeviathanAppRegistry registry) =>
     registry.TryGetManifest(appId, out var manifest) ? Results.Ok(manifest) : Results.NotFound(new { error = $"Unknown appId '{appId}'." }));
 

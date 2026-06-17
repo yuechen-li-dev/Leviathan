@@ -3,6 +3,7 @@ import { MachinaTextView } from "machinalayout/text/react";
 import type { DispatchFn } from "./types";
 import type { LeviathanViewData } from "./layouts";
 import { mapPrompt } from "./ariadneMapping";
+import { SchedulingHomeView } from "../apps/scheduling/views";
 
 type SlotProps = MachinaSlotProps<unknown, { dispatch: DispatchFn }>;
 const dispatchOf = (props: SlotProps) => props.nodeData?.dispatch;
@@ -163,6 +164,7 @@ export const viewRegistry = {
   prompt: PromptView,
   debugPanel: DebugPanelView,
   debugInspector: DebugInspectorView,
+  schedulingHome: SchedulingHomeView,
 };
 
 type DebugInspectorData = {
