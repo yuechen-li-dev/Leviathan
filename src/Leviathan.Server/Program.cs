@@ -7,9 +7,11 @@ using Leviathan.Server.Apps.Scheduling.Runtime;
 using Leviathan.Server.Platform.Apps;
 using Leviathan.Server.Platform.Capabilities;
 using Leviathan.Server.Platform.Identity;
+using Leviathan.Server.Platform.Storage;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddSingleton<ILeviathanObjectStore, LocalFileLeviathanObjectStore>();
 builder.Services.AddSingleton<AriadneSessionPersistence>();
 builder.Services.AddSingleton<ILeviathanSessionApp, RustSimulatorAppDefinition>();
 builder.Services.AddSingleton<ILeviathanAppDefinition, RustSimulatorAppDefinition>(sp => (RustSimulatorAppDefinition)sp.GetRequiredService<ILeviathanSessionApp>());

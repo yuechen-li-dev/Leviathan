@@ -310,3 +310,8 @@ No frontend install/build/test is required because only documentation changed.
 ## M15 update
 
 M15 implements the first local capability skeleton from this preflight: platform-owned capability names, grant records, a local file-backed grant store, a policy evaluator, and audit envelopes. App manifest capability strings are now treated as declarations rather than grants; Scheduling declares `admin.provider.configure`, while the local-dev grant authorizes use for `acct_local_dev` and `inst_local_dev_scheduling`.
+
+## M16 object storage update
+
+M16 adds a platform-owned object/checkpoint storage contract under `Platform/Storage` while preserving the local filesystem backend and existing local data layout. The abstraction applies first to object/checkpoint plane files such as Ariadne session manifests and Scheduling lifecycle manifests/checkpoints. Product/query metadata, capability grants, and local-dev ownership JSON remain direct file-backed persistence until a dedicated query-plane design. Future app- or agent-requested object operations should be routed through a storage actuator and gated by capabilities such as `object.read`, `object.write`, `object.list`, and `object.delete`.
+
