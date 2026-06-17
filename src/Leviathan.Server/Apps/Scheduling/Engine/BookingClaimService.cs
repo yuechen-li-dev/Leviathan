@@ -9,14 +9,15 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
 {
     private static bool Overlaps(ZonedTimeRange a, ZonedTimeRange b) => a.Overlaps(b);
     private static string Token() => Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
-    private static BookingAuditEvent Audit(ProviderId p, ResourceId? r, BookingId? b, HoldId? h, string type, string msg, ZonedTimeRange? range = null, string? decision = null, string? conflict = null, SchedulingLifecycleSummary? lifecycleSummary = null)
+    private static BookingAuditEvent Audit(ProviderId p, ResourceId? r, BookingId? b, HoldId? h, string type, string msg, ZonedTimeRange? range = null, string? decision = null, string? conflict = null, SchedulingLifecycleSummary? lifecycleSummary = null, string actor = "local-dev", IReadOnlyDictionary<string, string>? extra = null)
     {
         var data = new Dictionary<string, string>();
         if (range is not null) { data["startsAtUtc"] = range.StartsAtUtc.ToString("O"); data["endsAtUtc"] = range.EndsAtUtc.ToString("O"); data["timeZoneId"] = range.TimeZoneId; }
         if (decision is not null) data["decision"] = decision;
         if (conflict is not null) data["conflict"] = conflict;
+        if (extra is not null) foreach (var item in extra) data[item.Key] = item.Value;
         if (lifecycleSummary is not null) foreach (var item in SchedulingBookingRuntime.AuditData(lifecycleSummary)) data[item.Key] = item.Value;
-        return new(Guid.NewGuid().ToString("n"), p, r, b, h, type, DateTimeOffset.UtcNow, "local-dev", Guid.NewGuid().ToString("n"), msg, data);
+        return new(Guid.NewGuid().ToString("n"), p, r, b, h, type, DateTimeOffset.UtcNow, actor, Guid.NewGuid().ToString("n"), msg, data);
     }
 
     public async Task<(Hold? Hold, string? Error)> CreateHold(ProviderId providerId, ServiceId serviceId, ResourceId resourceId, ZonedTimeRange range, CancellationToken ct = default)
@@ -75,6 +76,51 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
             await store.AppendAudit(audit, ct);
             await lifecycle.Confirmed(hold, booking, audit.EventId, ct);
             return (booking, null);
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task<(Booking? Booking, string? Error, string? AuditEventId, SchedulingLifecycleSummary? Lifecycle)> Cancel(BookingId bookingId, string reason, string? message, string? actor, CancellationToken ct = default)
+    {
+        var booking = await store.GetBooking(bookingId, ct);
+        if (booking is null) return (null, "not_found", null, null);
+        var safeActor = string.IsNullOrWhiteSpace(actor) ? "local-dev" : actor.Trim();
+        var reasonCode = string.IsNullOrWhiteSpace(reason) ? "unspecified" : reason.Trim();
+        var details = new Dictionary<string, string> { ["bookingId"] = booking.Id.Value, ["reasonCode"] = reasonCode, ["actor"] = safeActor };
+        if (!string.IsNullOrWhiteSpace(message)) details["hasMessage"] = "true";
+
+        var gate = locks.For(booking.ProviderId, booking.ResourceId); await gate.WaitAsync(ct);
+        try
+        {
+            booking = await store.GetBooking(bookingId, ct);
+            if (booking is null) return (null, "not_found", null, null);
+            if (booking.Status != "confirmed")
+            {
+                details["policyResult"] = "rejected_not_confirmed";
+                await store.AppendAudit(Audit(booking.ProviderId, booking.ResourceId, booking.Id, null, "booking_cancellation_rejected", "Booking cancellation rejected by M11 policy.", booking.Range, "rejected", lifecycleSummary: lifecycle.ReadByBooking(booking.ProviderId, booking.Id), actor: safeActor, extra: details), ct);
+                return (null, "booking_not_cancellable", null, null);
+            }
+
+            details["policyResult"] = "accepted_confirmed_booking";
+            var requested = Audit(booking.ProviderId, booking.ResourceId, booking.Id, null, "booking_cancellation_requested", "Booking cancellation requested.", booking.Range, "accepted", actor: safeActor, extra: details);
+            await store.AppendAudit(requested, ct);
+
+            var cancelled = booking with
+            {
+                Status = "cancelled",
+                UpdatedAt = DateTimeOffset.UtcNow,
+                CancelledAt = DateTimeOffset.UtcNow,
+                CancellationReasonCode = reasonCode,
+                CancellationMessage = message,
+                CancellationActor = safeActor,
+                CancellationPolicyResult = "accepted_confirmed_booking"
+            };
+            await store.SaveBooking(cancelled, ct);
+            var summary = await lifecycle.Cancelled(cancelled, null, ct);
+            var audit = Audit(cancelled.ProviderId, cancelled.ResourceId, cancelled.Id, null, "booking_cancelled", "Booking cancelled and resource interval released.", cancelled.Range, "accepted", lifecycleSummary: summary, actor: safeActor, extra: details);
+            await store.AppendAudit(audit, ct);
+            summary = await lifecycle.Cancelled(cancelled, audit.EventId, ct);
+            return (cancelled, null, audit.EventId, summary);
         }
         finally { gate.Release(); }
     }

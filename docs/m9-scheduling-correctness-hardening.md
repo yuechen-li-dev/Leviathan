@@ -57,3 +57,7 @@ Backend tests cover Los Angeles timezone expansion, customer display timezone be
 ## M10 note
 
 M10 preserves the M9 UTC/timezone and safe persistence behavior while adding Dominatus lifecycle checkpoints for hold, intake, confirmation, and expiration transitions. Holds and bookings continue to store UTC instants in Scheduling product JSON.
+
+## M11 cancellation update
+
+M11 preserves the M9 timezone and UTC-truth model. Confirmed bookings still block intervals, but bookings cancelled through the M11 cancellation endpoint no longer block slot generation or same-resource holds. The local `.ics` endpoint remains minimal: confirmed bookings export normally, while cancelled bookings return a controlled error instead of calendar update semantics.

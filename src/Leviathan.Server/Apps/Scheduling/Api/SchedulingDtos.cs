@@ -1,4 +1,5 @@
 using Leviathan.Server.Apps.Scheduling.Domain;
+using Leviathan.Server.Apps.Scheduling.Runtime;
 
 namespace Leviathan.Server.Apps.Scheduling.Api;
 
@@ -12,5 +13,7 @@ public sealed record CreateHoldRequest(string ProviderId, string ServiceId, stri
 public sealed record HoldResponse(string HoldId, string ClaimToken, DateTimeOffset ExpiresAt, string Status);
 public sealed record SubmitIntakeRequest(string ClaimToken, string Name, string Email, string? Phone, string? Notes);
 public sealed record ConfirmBookingRequest(string HoldId, string ClaimToken, CustomerContact? Customer);
+public sealed record CancelBookingRequest(string Reason, string? Message, string? Actor);
+public sealed record CancelBookingResponse(Booking Booking, string AuditEventId, SchedulingLifecycleSummary Lifecycle);
 public sealed record SchedulingError(string Error, string Message);
 public sealed record IcsBookingDto(string Content);

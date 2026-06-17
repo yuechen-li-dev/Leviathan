@@ -177,6 +177,82 @@ public sealed class SchedulingM8Tests
         Assert.False(string.IsNullOrWhiteSpace(lifecycle.LastAuditEventId));
     }
 
+    [Fact]
+    public async Task Confirmed_booking_can_be_cancelled_and_releases_same_resource_slot()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var setup = await CreateSetup(client, "m11-cancel", twoResources: true);
+        var start = DateTimeOffset.Parse("2030-01-07T09:30:00Z");
+        var booking = await ConfirmBooking(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, start);
+
+        var cancelResponse = await client.PostAsJsonAsync($"/api/apps/scheduling/bookings/{booking.Id.Value}/cancel", new CancelBookingRequest("customer_requested", "Customer asked to move the visit.", "provider"));
+        cancelResponse.EnsureSuccessStatusCode();
+        var cancelled = (await cancelResponse.Content.ReadFromJsonAsync<CancelBookingResponse>())!;
+        Assert.Equal("cancelled", cancelled.Booking.Status);
+        Assert.Equal("customer_requested", cancelled.Booking.CancellationReasonCode);
+        Assert.Equal("provider", cancelled.Booking.CancellationActor);
+        Assert.Equal("accepted_confirmed_booking", cancelled.Booking.CancellationPolicyResult);
+        Assert.False(string.IsNullOrWhiteSpace(cancelled.AuditEventId));
+        Assert.Equal("Cancelled", cancelled.Lifecycle.CurrentWorkflowState);
+        Assert.Equal(cancelled.AuditEventId, cancelled.Lifecycle.LastAuditEventId);
+        Assert.True(File.Exists(Path.Combine(fixture.DataDir, "scheduling", "providers", setup.ProviderId, "bookings", booking.Id.Value, "lifecycle.dom1")));
+
+        var audit = await client.GetFromJsonAsync<BookingAuditEvent[]>($"/api/apps/scheduling/bookings/{booking.Id.Value}/audit?providerId={setup.ProviderId}");
+        var requested = Assert.Single(audit!, e => e.EventType == "booking_cancellation_requested");
+        Assert.Equal("customer_requested", requested.Data["reasonCode"]);
+        var completed = Assert.Single(audit!, e => e.EventType == "booking_cancelled");
+        Assert.Equal("Cancelled", completed.Data["lifecycleState"]);
+        Assert.Equal("accepted_confirmed_booking", completed.Data["policyResult"]);
+
+        var releasedHold = await Hold(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, start, start.AddMinutes(30));
+        Assert.Equal("active", releasedHold.Status);
+
+        var secondResourceHold = await Hold(client, setup.ProviderId, setup.ServiceId, setup.SecondResourceId!, start, start.AddMinutes(30));
+        Assert.Equal("active", secondResourceHold.Status);
+    }
+
+    [Fact]
+    public async Task Cancellation_rejects_unknown_and_already_cancelled_bookings()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var setup = await CreateSetup(client, "m11-cancel-errors", twoResources: false);
+        var booking = await ConfirmBooking(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, DateTimeOffset.Parse("2030-01-07T10:30:00Z"));
+
+        var unknown = await client.PostAsJsonAsync("/api/apps/scheduling/bookings/missing/cancel", new CancelBookingRequest("customer_requested", null, "provider"));
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+
+        var first = await client.PostAsJsonAsync($"/api/apps/scheduling/bookings/{booking.Id.Value}/cancel", new CancelBookingRequest("customer_requested", null, "provider"));
+        first.EnsureSuccessStatusCode();
+        var second = await client.PostAsJsonAsync($"/api/apps/scheduling/bookings/{booking.Id.Value}/cancel", new CancelBookingRequest("customer_requested", null, "provider"));
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+
+        var audit = await client.GetFromJsonAsync<BookingAuditEvent[]>($"/api/apps/scheduling/bookings/{booking.Id.Value}/audit?providerId={setup.ProviderId}");
+        Assert.Contains(audit!, e => e.EventType == "booking_cancellation_rejected" && e.Data["policyResult"] == "rejected_not_confirmed");
+    }
+
+    [Fact]
+    public async Task Cancelled_booking_lifecycle_summary_and_ics_are_safe()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var setup = await CreateSetup(client, "m11-cancel-life", twoResources: false);
+        var booking = await ConfirmBooking(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, DateTimeOffset.Parse("2030-01-07T11:00:00Z"));
+
+        var normalIcs = await client.GetAsync($"/api/apps/scheduling/bookings/{booking.Id.Value}/ics");
+        Assert.True(normalIcs.IsSuccessStatusCode);
+
+        await (await client.PostAsJsonAsync($"/api/apps/scheduling/bookings/{booking.Id.Value}/cancel", new CancelBookingRequest("provider_unavailable", null, "provider"))).Content.ReadAsStringAsync();
+        var lifecycle = await client.GetFromJsonAsync<SchedulingLifecycleSummary>($"/api/apps/scheduling/bookings/{booking.Id.Value}/lifecycle");
+        Assert.Equal("Cancelled", lifecycle!.CurrentWorkflowState);
+        Assert.Equal("cancelled", lifecycle.Status);
+        Assert.False(string.IsNullOrWhiteSpace(lifecycle.LastAuditEventId));
+
+        var cancelledIcs = await client.GetAsync($"/api/apps/scheduling/bookings/{booking.Id.Value}/ics");
+        Assert.Equal(HttpStatusCode.BadRequest, cancelledIcs.StatusCode);
+    }
+
     private static async Task<(string ProviderId, string ServiceId, string ResourceId, string? SecondResourceId)> CreateSetup(HttpClient client, string slug, bool twoResources, string timeZone = "UTC")
     {
         var provider = (await (await client.PostAsJsonAsync("/api/apps/scheduling/providers", new CreateProviderRequest(slug, "M8 Demo", timeZone, null, null))).Content.ReadFromJsonAsync<Provider>())!;
@@ -195,6 +271,15 @@ public sealed class SchedulingM8Tests
         var response = await client.PostAsJsonAsync("/api/apps/scheduling/holds", new CreateHoldRequest(providerId, serviceId, resourceId, start, end, "UTC"));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<HoldResponse>())!;
+    }
+
+    private static async Task<Booking> ConfirmBooking(HttpClient client, string providerId, string serviceId, string resourceId, DateTimeOffset start)
+    {
+        var hold = await Hold(client, providerId, serviceId, resourceId, start, start.AddMinutes(30));
+        (await client.PostAsJsonAsync($"/api/apps/scheduling/holds/{hold.HoldId}/intake", new SubmitIntakeRequest(hold.ClaimToken, "Ada", "ada@example.test", null, null))).EnsureSuccessStatusCode();
+        var response = await client.PostAsJsonAsync("/api/apps/scheduling/bookings/confirm", new ConfirmBookingRequest(hold.HoldId, hold.ClaimToken, null));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<Booking>())!;
     }
     private sealed class LeviathanFactory : WebApplicationFactory<Program>
     {
