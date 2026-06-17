@@ -41,6 +41,59 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
         finally { gate.Release(); }
     }
 
+    public async Task<(Hold? Hold, string? Error, string? AuditEventId)> CreateReplacementHold(BookingId bookingId, ServiceId serviceId, ResourceId resourceId, ZonedTimeRange range, string reason, string? message, string? actor, CancellationToken ct = default)
+    {
+        var old = await store.GetBooking(bookingId, ct);
+        if (old is null) return (null, "not_found", null);
+        var safeActor = string.IsNullOrWhiteSpace(actor) ? "local-dev" : actor.Trim();
+        var reasonCode = string.IsNullOrWhiteSpace(reason) ? "unspecified" : reason.Trim();
+        var details = RescheduleDetails(old, null, null, range, resourceId, safeActor, reasonCode, message);
+
+        var gate = locks.For(old.ProviderId, resourceId); await gate.WaitAsync(ct);
+        try
+        {
+            old = await store.GetBooking(bookingId, ct);
+            if (old is null) return (null, "not_found", null);
+            if (old.Status != "confirmed")
+            {
+                details["decision"] = "rejected_not_confirmed";
+                var rejected = Audit(old.ProviderId, old.ResourceId, old.Id, null, "booking_reschedule_hold_rejected", "Replacement hold rejected because the original booking is not confirmed.", old.Range, "rejected", lifecycleSummary: lifecycle.ReadByBooking(old.ProviderId, old.Id), actor: safeActor, extra: details);
+                await store.AppendAudit(rejected, ct);
+                return (null, "booking_not_reschedulable", rejected.EventId);
+            }
+
+            var requested = Audit(old.ProviderId, old.ResourceId, old.Id, null, "booking_reschedule_requested", "Booking reschedule requested; original booking remains confirmed.", old.Range, "accepted", actor: safeActor, extra: details);
+            await store.AppendAudit(requested, ct);
+
+            await ExpireStale(old.ProviderId, resourceId, ct);
+            var bookings = await store.GetBookings(old.ProviderId, resourceId, ct);
+            if (bookings.Any(b => b.Status == "confirmed" && Overlaps(b.Range, range)))
+            {
+                details["decision"] = "rejected_slot_conflict";
+                var rejected = Audit(old.ProviderId, resourceId, old.Id, null, "booking_reschedule_hold_rejected", "Replacement hold rejected due to confirmed booking conflict.", range, "rejected", "booking", actor: safeActor, extra: details);
+                await store.AppendAudit(rejected, ct);
+                return (null, "slot_conflict", rejected.EventId);
+            }
+            var holds = await store.GetActiveHolds(old.ProviderId, resourceId, DateTimeOffset.UtcNow, ct);
+            if (holds.Any(h => Overlaps(h.Range, range)))
+            {
+                details["decision"] = "rejected_hold_conflict";
+                var rejected = Audit(old.ProviderId, resourceId, old.Id, null, "booking_reschedule_hold_rejected", "Replacement hold rejected due to active hold conflict.", range, "rejected", "hold", actor: safeActor, extra: details);
+                await store.AppendAudit(rejected, ct);
+                return (null, "slot_conflict", rejected.EventId);
+            }
+            var hold = new Hold(HoldId.New(), old.ProviderId, serviceId, resourceId, range, Token(), null, "active", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10), null, old.Id, reasonCode, message, safeActor);
+            await store.SaveHold(hold, ct);
+            var summary = await lifecycle.HoldCreated(hold, null, ct);
+            details = RescheduleDetails(old, hold, null, range, resourceId, safeActor, reasonCode, message);
+            var audit = Audit(old.ProviderId, resourceId, old.Id, hold.Id, "booking_reschedule_hold_created", "Replacement hold created; original booking remains confirmed.", range, "accepted", lifecycleSummary: summary, actor: safeActor, extra: details);
+            await store.AppendAudit(audit, ct);
+            await lifecycle.HoldCreated(hold, audit.EventId, ct);
+            return (hold, null, audit.EventId);
+        }
+        finally { gate.Release(); }
+    }
+
     public async Task<(Hold? Hold, string? Error)> SubmitIntake(HoldId holdId, string token, CustomerContact contact, CancellationToken ct = default)
     {
         var hold = await store.GetHold(holdId, ct);
@@ -59,25 +112,42 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
     {
         var hold = await store.GetHold(holdId, ct);
         if (hold is null || hold.ClaimToken != token) return (null, "hold_not_found");
-        var gate = locks.For(hold.ProviderId, hold.ResourceId); await gate.WaitAsync(ct);
+        var initialOldBooking = hold.ReplacementForBookingId is null ? null : await store.GetBooking(hold.ReplacementForBookingId, ct);
+        var gates = OrderedGates(hold.ProviderId, hold.ResourceId, initialOldBooking?.ResourceId);
+        foreach (var gateToAcquire in gates) await gateToAcquire.WaitAsync(ct);
         try
         {
             if (hold.ExpiresAt <= DateTimeOffset.UtcNow) { await store.ExpireHold(hold, ct); var expiredConfirmSummary = await lifecycle.Expired(hold, "rejected", null, ct); var expiredConfirmAudit = Audit(hold.ProviderId, hold.ResourceId, null, hold.Id, "hold_expired", "Hold expired before confirmation.", hold.Range, "rejected", lifecycleSummary: expiredConfirmSummary); await store.AppendAudit(expiredConfirmAudit, ct); await lifecycle.Expired(hold, "rejected", expiredConfirmAudit.EventId, ct); return (null, "hold_expired"); }
             var customer = contact ?? hold.CustomerDraft;
             if (customer is null) return (null, "intake_required");
             await ExpireStale(hold.ProviderId, hold.ResourceId, ct);
+            var oldBooking = hold.ReplacementForBookingId is null ? null : await store.GetBooking(hold.ReplacementForBookingId, ct);
+            if (hold.ReplacementForBookingId is not null && (oldBooking is null || oldBooking.Status != "confirmed")) { await store.AppendAudit(Audit(hold.ProviderId, hold.ResourceId, oldBooking?.Id, hold.Id, "booking_reschedule_failed", "Replacement confirmation failed because the original booking is no longer confirmed.", hold.Range, "rejected", "original_not_confirmed", actor: hold.RescheduleActor ?? "local-dev"), ct); return (null, "booking_not_reschedulable"); }
             var bookings = await store.GetBookings(hold.ProviderId, hold.ResourceId, ct);
-            if (bookings.Any(b => b.Status == "confirmed" && Overlaps(b.Range, hold.Range))) { await store.AppendAudit(Audit(hold.ProviderId, hold.ResourceId, null, hold.Id, "booking_rejected", "Booking rejected due to confirmed booking conflict.", hold.Range, "rejected", "booking"), ct); return (null, "slot_conflict"); }
-            var booking = new Booking(BookingId.New(), hold.ProviderId, hold.ServiceId, hold.ResourceId, customer, hold.Range, "confirmed", "m8-local-policy-hold-ttl-10m", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null);
+            if (bookings.Any(b => b.Status == "confirmed" && b.Id != hold.ReplacementForBookingId && Overlaps(b.Range, hold.Range))) { await store.AppendAudit(Audit(hold.ProviderId, hold.ResourceId, null, hold.Id, hold.ReplacementForBookingId is null ? "booking_rejected" : "booking_reschedule_failed", "Booking rejected due to confirmed booking conflict.", hold.Range, "rejected", "booking"), ct); return (null, "slot_conflict"); }
+            var booking = new Booking(BookingId.New(), hold.ProviderId, hold.ServiceId, hold.ResourceId, customer, hold.Range, "confirmed", "m8-local-policy-hold-ttl-10m", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, RescheduledFromBookingId: hold.ReplacementForBookingId, ReplacementHoldId: hold.ReplacementForBookingId is null ? null : hold.Id);
             await store.SaveBooking(booking, ct);
             await store.ExpireHold(hold with { Status = "confirmed" }, ct);
             var summary = await lifecycle.Confirmed(hold, booking, null, ct);
             var audit = Audit(hold.ProviderId, hold.ResourceId, booking.Id, hold.Id, "booking_confirmed", "Hold confirmed into booking.", hold.Range, "accepted", lifecycleSummary: summary);
             await store.AppendAudit(audit, ct);
             await lifecycle.Confirmed(hold, booking, audit.EventId, ct);
+            if (oldBooking is not null)
+            {
+                var details = RescheduleDetails(oldBooking, hold, booking, hold.Range, hold.ResourceId, hold.RescheduleActor ?? "local-dev", hold.RescheduleReasonCode ?? "unspecified", hold.RescheduleMessage);
+                var rescheduled = oldBooking with { Status = "rescheduled", UpdatedAt = DateTimeOffset.UtcNow, RescheduledAt = DateTimeOffset.UtcNow, RescheduledToBookingId = booking.Id, RescheduleReasonCode = hold.RescheduleReasonCode, RescheduleMessage = hold.RescheduleMessage, RescheduleActor = hold.RescheduleActor, ReplacementHoldId = hold.Id, ReplacementBookingId = booking.Id, CancellationPolicyResult = "accepted_reschedule" };
+                await store.SaveBooking(rescheduled, ct);
+                var oldSummary = await lifecycle.Rescheduled(rescheduled, null, ct);
+                var oldAudit = Audit(rescheduled.ProviderId, rescheduled.ResourceId, rescheduled.Id, hold.Id, "booking_rescheduled", "Original booking rescheduled after replacement booking confirmation.", rescheduled.Range, "accepted", lifecycleSummary: oldSummary, actor: hold.RescheduleActor ?? "local-dev", extra: details);
+                await store.AppendAudit(oldAudit, ct);
+                oldSummary = await lifecycle.Rescheduled(rescheduled, oldAudit.EventId, ct);
+                var newAudit = Audit(booking.ProviderId, booking.ResourceId, booking.Id, hold.Id, "booking_reschedule_confirmed", "Replacement booking confirmed and linked to original booking.", booking.Range, "accepted", lifecycleSummary: summary, actor: hold.RescheduleActor ?? "local-dev", extra: details);
+                await store.AppendAudit(newAudit, ct);
+                await lifecycle.Confirmed(hold, booking, newAudit.EventId, ct);
+            }
             return (booking, null);
         }
-        finally { gate.Release(); }
+        finally { foreach (var gateToRelease in gates.Reverse()) gateToRelease.Release(); }
     }
 
     public async Task<(Booking? Booking, string? Error, string? AuditEventId, SchedulingLifecycleSummary? Lifecycle)> Cancel(BookingId bookingId, string reason, string? message, string? actor, CancellationToken ct = default)
@@ -130,4 +200,27 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
         foreach (var hold in await store.GetActiveHolds(providerId, resourceId, DateTimeOffset.MinValue, ct))
             if (hold.ExpiresAt <= DateTimeOffset.UtcNow) { await store.ExpireHold(hold, ct); var summary = await lifecycle.Expired(hold, "released", null, ct); var audit = Audit(providerId, resourceId, null, hold.Id, "hold_expired", "Expired stale hold before claim decision.", hold.Range, "released", lifecycleSummary: summary); await store.AppendAudit(audit, ct); await lifecycle.Expired(hold, "released", audit.EventId, ct); }
     }
+
+    private static Dictionary<string, string> RescheduleDetails(Booking old, Hold? hold, Booking? replacement, ZonedTimeRange replacementRange, ResourceId replacementResourceId, string actor, string reason, string? message)
+    {
+        var details = new Dictionary<string, string>
+        {
+            ["oldBookingId"] = old.Id.Value,
+            ["oldResourceId"] = old.ResourceId.Value,
+            ["oldStartsAtUtc"] = old.Range.StartsAtUtc.ToString("O"),
+            ["oldEndsAtUtc"] = old.Range.EndsAtUtc.ToString("O"),
+            ["newResourceId"] = replacementResourceId.Value,
+            ["newStartsAtUtc"] = replacementRange.StartsAtUtc.ToString("O"),
+            ["newEndsAtUtc"] = replacementRange.EndsAtUtc.ToString("O"),
+            ["actor"] = actor,
+            ["reasonCode"] = reason,
+            ["hasMessage"] = string.IsNullOrWhiteSpace(message) ? "false" : "true"
+        };
+        if (hold is not null) details["replacementHoldId"] = hold.Id.Value;
+        if (replacement is not null) details["newBookingId"] = replacement.Id.Value;
+        return details;
+    }
+
+    private IReadOnlyList<SemaphoreSlim> OrderedGates(ProviderId providerId, ResourceId primary, ResourceId? secondary) =>
+        new[] { primary, secondary }.Where(r => r is not null).Select(r => r!).Distinct().OrderBy(r => $"{providerId.Value}:{r.Value}", StringComparer.Ordinal).Select(r => locks.For(providerId, r)).ToArray();
 }

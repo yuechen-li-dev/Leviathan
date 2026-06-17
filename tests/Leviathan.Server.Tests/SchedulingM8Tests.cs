@@ -253,6 +253,98 @@ public sealed class SchedulingM8Tests
         Assert.Equal(HttpStatusCode.BadRequest, cancelledIcs.StatusCode);
     }
 
+    [Fact]
+    public async Task Reschedule_replacement_hold_keeps_old_booking_confirmed_and_conflicts_safely()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var setup = await CreateSetup(client, "m19-hold", twoResources: true);
+        var oldStart = DateTimeOffset.Parse("2030-01-07T09:00:00Z");
+        var old = await ConfirmBooking(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, oldStart);
+        var blocker = await ConfirmBooking(client, setup.ProviderId, setup.ServiceId, setup.SecondResourceId!, DateTimeOffset.Parse("2030-01-07T10:00:00Z"));
+
+        var conflict = await client.PostAsJsonAsync($"/api/apps/scheduling/bookings/{old.Id.Value}/reschedule/holds", new CreateReplacementHoldRequest(setup.ServiceId, setup.SecondResourceId!, DateTimeOffset.Parse("2030-01-07T10:00:00Z"), DateTimeOffset.Parse("2030-01-07T10:30:00Z"), "UTC", "UTC", "customer_requested", "Move later.", "provider"));
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        var stillOld = await client.GetFromJsonAsync<Booking>($"/api/apps/scheduling/bookings/{old.Id.Value}");
+        Assert.Equal("confirmed", stillOld!.Status);
+        Assert.Equal("confirmed", (await client.GetFromJsonAsync<Booking>($"/api/apps/scheduling/bookings/{blocker.Id.Value}"))!.Status);
+
+        var replacement = await client.PostAsJsonAsync($"/api/apps/scheduling/bookings/{old.Id.Value}/reschedule/holds", new CreateReplacementHoldRequest(setup.ServiceId, setup.SecondResourceId!, DateTimeOffset.Parse("2030-01-07T10:30:00Z"), DateTimeOffset.Parse("2030-01-07T11:00:00Z"), "UTC", "UTC", "customer_requested", "Move later.", "provider"));
+        replacement.EnsureSuccessStatusCode();
+        var replacementHold = (await replacement.Content.ReadFromJsonAsync<ReplacementHoldResponse>())!;
+        Assert.Equal(old.Id.Value, replacementHold.OldBookingId);
+        Assert.False(string.IsNullOrWhiteSpace(replacementHold.AuditEventId));
+        Assert.Equal("AwaitingIntake", replacementHold.Lifecycle!.CurrentWorkflowState);
+        Assert.Equal("confirmed", (await client.GetFromJsonAsync<Booking>($"/api/apps/scheduling/bookings/{old.Id.Value}"))!.Status);
+    }
+
+    [Fact]
+    public async Task Reschedule_confirmation_links_bookings_releases_old_slot_blocks_new_slot_and_updates_audit_lifecycle_ics()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var setup = await CreateSetup(client, "m19-confirm", twoResources: true);
+        var oldStart = DateTimeOffset.Parse("2030-01-07T09:00:00Z");
+        var newStart = DateTimeOffset.Parse("2030-01-07T10:30:00Z");
+        var old = await ConfirmBooking(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, oldStart);
+
+        var holdResponse = await client.PostAsJsonAsync($"/api/apps/scheduling/bookings/{old.Id.Value}/reschedule/holds", new CreateReplacementHoldRequest(setup.ServiceId, setup.SecondResourceId!, newStart, newStart.AddMinutes(30), "UTC", "UTC", "customer_requested", null, "provider"));
+        holdResponse.EnsureSuccessStatusCode();
+        var hold = (await holdResponse.Content.ReadFromJsonAsync<ReplacementHoldResponse>())!;
+        (await client.PostAsJsonAsync($"/api/apps/scheduling/holds/{hold.ReplacementHoldId}/intake", new SubmitIntakeRequest(hold.ClaimToken, "Ada", "ada@example.test", null, null))).EnsureSuccessStatusCode();
+        var confirm = await client.PostAsJsonAsync("/api/apps/scheduling/bookings/confirm", new ConfirmBookingRequest(hold.ReplacementHoldId, hold.ClaimToken, null));
+        confirm.EnsureSuccessStatusCode();
+        var replacement = (await confirm.Content.ReadFromJsonAsync<Booking>())!;
+
+        Assert.Equal("confirmed", replacement.Status);
+        Assert.Equal(old.Id, replacement.RescheduledFromBookingId);
+        var rescheduledOld = await client.GetFromJsonAsync<Booking>($"/api/apps/scheduling/bookings/{old.Id.Value}");
+        Assert.Equal("rescheduled", rescheduledOld!.Status);
+        Assert.Equal(replacement.Id, rescheduledOld.RescheduledToBookingId);
+        Assert.Equal("customer_requested", rescheduledOld.RescheduleReasonCode);
+
+        var oldReleased = await Hold(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, oldStart, oldStart.AddMinutes(30));
+        Assert.Equal("active", oldReleased.Status);
+        var newBlocked = await client.PostAsJsonAsync("/api/apps/scheduling/holds", new CreateHoldRequest(setup.ProviderId, setup.ServiceId, setup.SecondResourceId!, newStart, newStart.AddMinutes(30), "UTC"));
+        Assert.Equal(HttpStatusCode.Conflict, newBlocked.StatusCode);
+
+        var oldAudit = await client.GetFromJsonAsync<BookingAuditEvent[]>($"/api/apps/scheduling/bookings/{old.Id.Value}/audit?providerId={setup.ProviderId}");
+        Assert.Contains(oldAudit!, e => e.EventType == "booking_reschedule_requested");
+        Assert.Contains(oldAudit!, e => e.EventType == "booking_rescheduled" && e.Data["newBookingId"] == replacement.Id.Value && e.Data["lifecycleState"] == "Rescheduled");
+        var newAudit = await client.GetFromJsonAsync<BookingAuditEvent[]>($"/api/apps/scheduling/bookings/{replacement.Id.Value}/audit?providerId={setup.ProviderId}");
+        Assert.Contains(newAudit!, e => e.EventType == "booking_reschedule_confirmed" && e.Data["oldBookingId"] == old.Id.Value);
+
+        var oldLifecycle = await client.GetFromJsonAsync<SchedulingLifecycleSummary>($"/api/apps/scheduling/bookings/{old.Id.Value}/lifecycle");
+        Assert.Equal("Rescheduled", oldLifecycle!.CurrentWorkflowState);
+        Assert.Equal(replacement.Id.Value, oldLifecycle.RescheduledToBookingId);
+        var newLifecycle = await client.GetFromJsonAsync<SchedulingLifecycleSummary>($"/api/apps/scheduling/bookings/{replacement.Id.Value}/lifecycle");
+        Assert.Equal("Confirmed", newLifecycle!.CurrentWorkflowState);
+        Assert.Equal(old.Id.Value, newLifecycle.RescheduledFromBookingId);
+
+        var oldIcs = await client.GetAsync($"/api/apps/scheduling/bookings/{old.Id.Value}/ics");
+        Assert.Equal(HttpStatusCode.BadRequest, oldIcs.StatusCode);
+        var oldIcsError = await oldIcs.Content.ReadFromJsonAsync<SchedulingError>();
+        Assert.Equal("booking_rescheduled", oldIcsError!.Error);
+        Assert.True((await client.GetAsync($"/api/apps/scheduling/bookings/{replacement.Id.Value}/ics")).IsSuccessStatusCode);
+    }
+
+    [Fact]
+    public async Task Expired_replacement_hold_leaves_old_booking_confirmed()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var setup = await CreateSetup(client, "m19-expired", twoResources: false);
+        var old = await ConfirmBooking(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, DateTimeOffset.Parse("2030-01-07T09:00:00Z"));
+        var newStart = DateTimeOffset.Parse("2030-01-07T10:00:00Z");
+        var hold = (await (await client.PostAsJsonAsync($"/api/apps/scheduling/bookings/{old.Id.Value}/reschedule/holds", new CreateReplacementHoldRequest(setup.ServiceId, setup.ResourceId, newStart, newStart.AddMinutes(30), "UTC", null, "customer_requested", null, "provider"))).Content.ReadFromJsonAsync<ReplacementHoldResponse>())!;
+        var path = Path.Combine(fixture.DataDir, "scheduling", "providers", setup.ProviderId, "holds", "active", hold.ReplacementHoldId + ".json");
+        var stored = (await System.Text.Json.JsonSerializer.DeserializeAsync<Hold>(File.OpenRead(path), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)))!;
+        await File.WriteAllTextAsync(path, System.Text.Json.JsonSerializer.Serialize(stored with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+        var confirm = await client.PostAsJsonAsync("/api/apps/scheduling/bookings/confirm", new ConfirmBookingRequest(hold.ReplacementHoldId, hold.ClaimToken, new CustomerContact("Ada", "ada@example.test", null, null)));
+        Assert.Equal(HttpStatusCode.BadRequest, confirm.StatusCode);
+        Assert.Equal("confirmed", (await client.GetFromJsonAsync<Booking>($"/api/apps/scheduling/bookings/{old.Id.Value}"))!.Status);
+    }
+
 
     [Fact]
     public async Task M14_local_dev_context_and_provider_ownership_are_enforced()

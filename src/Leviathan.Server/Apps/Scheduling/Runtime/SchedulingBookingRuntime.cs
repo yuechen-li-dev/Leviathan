@@ -26,13 +26,16 @@ public sealed class SchedulingBookingRuntime
         await Save(ToCheckpoint(hold, SchedulingBookingStates.IntakeSubmitted, "accepted", lastAuditEventId), ct);
 
     public async Task<SchedulingLifecycleSummary> Confirmed(Hold hold, Booking booking, string? lastAuditEventId, CancellationToken ct = default) =>
-        await Save(new SchedulingBookingCheckpoint(1, hold.ProviderId.Value, hold.ResourceId.Value, hold.ServiceId.Value, hold.Id.Value, booking.Id.Value, TokenRef(hold.ClaimToken), hold.Range.StartsAtUtc, hold.Range.EndsAtUtc, hold.Range.TimeZoneId, booking.Status, SchedulingBookingStates.Confirmed, true, "accepted", lastAuditEventId, hold.CreatedAt, booking.UpdatedAt, hold.ExpiresAt), ct);
+        await Save(new SchedulingBookingCheckpoint(1, hold.ProviderId.Value, hold.ResourceId.Value, hold.ServiceId.Value, hold.Id.Value, booking.Id.Value, TokenRef(hold.ClaimToken), hold.Range.StartsAtUtc, hold.Range.EndsAtUtc, hold.Range.TimeZoneId, booking.Status, SchedulingBookingStates.Confirmed, true, "accepted", lastAuditEventId, hold.CreatedAt, booking.UpdatedAt, hold.ExpiresAt, booking.RescheduledFromBookingId?.Value, booking.RescheduledToBookingId?.Value, booking.ReplacementHoldId?.Value), ct);
 
     public async Task<SchedulingLifecycleSummary> Expired(Hold hold, string decision, string? lastAuditEventId, CancellationToken ct = default) =>
         await Save(ToCheckpoint(hold with { Status = "expired" }, SchedulingBookingStates.Expired, decision, lastAuditEventId), ct);
 
     public async Task<SchedulingLifecycleSummary> Cancelled(Booking booking, string? lastAuditEventId, CancellationToken ct = default) =>
         await Save(new SchedulingBookingCheckpoint(1, booking.ProviderId.Value, booking.ResourceId.Value, booking.ServiceId.Value, string.Empty, booking.Id.Value, string.Empty, booking.Range.StartsAtUtc, booking.Range.EndsAtUtc, booking.Range.TimeZoneId, booking.Status, SchedulingBookingStates.Cancelled, true, booking.CancellationPolicyResult ?? "accepted_confirmed_booking", lastAuditEventId, booking.CreatedAt, booking.UpdatedAt, booking.CancelledAt ?? booking.UpdatedAt), ct);
+
+    public async Task<SchedulingLifecycleSummary> Rescheduled(Booking booking, string? lastAuditEventId, CancellationToken ct = default) =>
+        await Save(new SchedulingBookingCheckpoint(1, booking.ProviderId.Value, booking.ResourceId.Value, booking.ServiceId.Value, string.Empty, booking.Id.Value, string.Empty, booking.Range.StartsAtUtc, booking.Range.EndsAtUtc, booking.Range.TimeZoneId, booking.Status, SchedulingBookingStates.Rescheduled, true, booking.CancellationPolicyResult ?? "accepted_reschedule", lastAuditEventId, booking.CreatedAt, booking.UpdatedAt, booking.RescheduledAt ?? booking.UpdatedAt, booking.RescheduledFromBookingId?.Value, booking.RescheduledToBookingId?.Value, booking.ReplacementHoldId?.Value), ct);
 
     public SchedulingLifecycleSummary? ReadByHold(ProviderId providerId, HoldId holdId)
     {
@@ -50,7 +53,10 @@ public sealed class SchedulingBookingRuntime
         ["lifecycleState"] = summary.CurrentWorkflowState,
         ["lifecycleStatus"] = summary.Status,
         ["lifecycleCheckpoint"] = summary.CheckpointPath ?? string.Empty
-    };
+    }.Concat(summary.RescheduledFromBookingId is null ? [] : new[] { new KeyValuePair<string, string>("rescheduledFromBookingId", summary.RescheduledFromBookingId) })
+     .Concat(summary.RescheduledToBookingId is null ? [] : new[] { new KeyValuePair<string, string>("rescheduledToBookingId", summary.RescheduledToBookingId) })
+     .Concat(summary.ReplacementHoldId is null ? [] : new[] { new KeyValuePair<string, string>("replacementHoldId", summary.ReplacementHoldId) })
+     .ToDictionary(k => k.Key, v => v.Value);
 
     private async Task<SchedulingLifecycleSummary> Save(SchedulingBookingCheckpoint checkpoint, CancellationToken ct)
     {
@@ -103,7 +109,7 @@ public sealed class SchedulingBookingRuntime
         new(1, hold.ProviderId.Value, hold.ResourceId.Value, hold.ServiceId.Value, hold.Id.Value, null, TokenRef(hold.ClaimToken), hold.Range.StartsAtUtc, hold.Range.EndsAtUtc, hold.Range.TimeZoneId, hold.Status, state, hold.IntakeSubmittedAt is not null, decision, auditId, hold.CreatedAt, DateTimeOffset.UtcNow, hold.ExpiresAt);
 
     private static SchedulingLifecycleSummary ToSummary(SchedulingBookingCheckpoint c, string path) =>
-        new(c.Status, c.ProviderId, c.ResourceId, c.ServiceId, c.HoldId, c.BookingId, c.WorkflowState, File.Exists(path), path, c.LastAuditEventId, c.CreatedAt, c.UpdatedAt, c.ExpiresAt);
+        new(c.Status, c.ProviderId, c.ResourceId, c.ServiceId, c.HoldId, c.BookingId, c.WorkflowState, File.Exists(path), path, c.LastAuditEventId, c.CreatedAt, c.UpdatedAt, c.ExpiresAt, c.RescheduledFromBookingId, c.RescheduledToBookingId, c.ReplacementHoldId);
 
     private string HoldDir(ProviderId providerId, string bucket, HoldId holdId) => _objectStore.PathFor(HoldKey(providerId, bucket, holdId, string.Empty));
     private string BookingDir(ProviderId providerId, BookingId bookingId) => _objectStore.PathFor(BookingKey(providerId, bookingId, string.Empty));

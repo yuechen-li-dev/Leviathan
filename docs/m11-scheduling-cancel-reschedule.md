@@ -80,12 +80,14 @@ The local `.ics` endpoint remains intentionally small. A confirmed booking retur
 
 ## Reschedule status
 
-Full rescheduling is deferred. M11 documents the safe interim model:
+M11 originally deferred full rescheduling and documented a manual interim model. M19 replaces that interim guidance with a dedicated safe reschedule workflow:
 
-1. create a new hold and booking through the normal flow;
-2. cancel the old confirmed booking after the replacement booking is confirmed.
+1. create a replacement hold through `POST /api/apps/scheduling/bookings/{bookingId}/reschedule/holds`;
+2. submit intake through the existing hold intake endpoint;
+3. confirm through the existing booking confirmation endpoint;
+4. only after replacement confirmation, transition the original booking to `rescheduled`.
 
-This avoids pretending there is an atomic reschedule while Scheduling still has no payments, refunds, reminders, external calendar sync, or real customer identity. A future milestone can add a dedicated reschedule hold endpoint and optional `Rescheduled` lifecycle state once policy and UX boundaries are clearer.
+The old booking remains `confirmed` until the replacement booking is confirmed. See `docs/m19-scheduling-reschedule-workflow.md` for the current model.
 
 ## Tests added
 
@@ -105,7 +107,7 @@ Existing M9 timezone tests and app registry tests continue to run with the sched
 
 ## Known limitations
 
-- No full atomic reschedule endpoint exists in M11.
+- M11 did not include a full reschedule endpoint; M19 now adds a safe local-file, single-process reschedule workflow.
 - No payment, refund, deposit, reminder, SMS, auth, or external calendar behavior is implemented.
 - Cancellation policy is intentionally coarse and does not model provider-specific cutoff windows.
 - `.ics` cancellation does not emit METHOD:CANCEL or sequence updates.

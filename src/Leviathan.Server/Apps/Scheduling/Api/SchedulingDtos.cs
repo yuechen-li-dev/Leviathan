@@ -15,5 +15,7 @@ public sealed record SubmitIntakeRequest(string ClaimToken, string Name, string 
 public sealed record ConfirmBookingRequest(string HoldId, string ClaimToken, CustomerContact? Customer);
 public sealed record CancelBookingRequest(string Reason, string? Message, string? Actor);
 public sealed record CancelBookingResponse(Booking Booking, string AuditEventId, SchedulingLifecycleSummary Lifecycle);
+public sealed record CreateReplacementHoldRequest(string ServiceId, string ResourceId, DateTimeOffset StartUtc, DateTimeOffset EndUtc, string TimeZoneId, string? DisplayTimeZoneId, string Reason, string? Message, string? Actor);
+public sealed record ReplacementHoldResponse(string OldBookingId, string ReplacementHoldId, string ClaimToken, BookableSlotDto TargetSlot, string? AuditEventId, SchedulingLifecycleSummary? Lifecycle);
 public sealed record SchedulingError(string Error, string Message);
 public sealed record IcsBookingDto(string Content);
