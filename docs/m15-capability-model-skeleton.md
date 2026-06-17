@@ -169,3 +169,8 @@ Object-storage actuation now uses the M15 capability policy in policy-enforced m
 ## M20 payment capability note
 
 Scheduling now declares future `payment.checkout` and `payment.refund` capability needs. M20 does not perform external payment actuation; payment provider authority remains platform-owned and future real checkout/refund commands must be capability-gated before reaching Dominatus actuators.
+
+
+## M21 notification capability declarations
+
+Scheduling now declares future `notification.send`, `email.send`, and `sms.send` capability needs. M21 only creates local notification policy and fake-send records; real provider delivery remains deferred until Leviathan grants and Dominatus notification actuators exist.

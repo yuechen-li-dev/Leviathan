@@ -171,3 +171,8 @@ Good M20 options:
 ## M20 payment-policy note
 
 M20 preserves the M19 safe reschedule invariant. Payment transfer/carry-forward is represented only as deferred policy metadata; no refund, ledger, provider call, or real payment transfer is performed.
+
+
+## M21 notification adjacency
+
+M21 extends reschedule confirmation so pending notification records for the old booking are cancelled while the replacement booking receives new notification records from its own service policy snapshot. The reschedule workflow still performs no real sends and no external calendar sync.

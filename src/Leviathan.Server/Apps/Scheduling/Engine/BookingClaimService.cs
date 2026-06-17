@@ -32,8 +32,9 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
             if (holds.Any(h => Overlaps(h.Range, range))) { await store.AppendAudit(Audit(providerId, resourceId, null, null, "hold_rejected", "Hold rejected due to active hold conflict.", range, "rejected", "hold"), ct); return (null, "slot_conflict"); }
             var service = await store.GetService(serviceId, ct);
             var paymentPolicy = service?.PaymentPolicy;
+            var notificationPolicy = service?.NotificationPolicy;
             var paymentRequired = paymentPolicy?.RequiresPaymentBeforeConfirmation == true;
-            var hold = new Hold(HoldId.New(), providerId, serviceId, resourceId, range, Token(), null, "active", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10), null, PaymentRequirementStatus: paymentRequired ? PaymentRequirementStatuses.Required : PaymentRequirementStatuses.NotRequired, PaymentPolicySnapshot: paymentPolicy, PaymentRequiredAt: paymentRequired ? DateTimeOffset.UtcNow : null);
+            var hold = new Hold(HoldId.New(), providerId, serviceId, resourceId, range, Token(), null, "active", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10), null, PaymentRequirementStatus: paymentRequired ? PaymentRequirementStatuses.Required : PaymentRequirementStatuses.NotRequired, PaymentPolicySnapshot: paymentPolicy, PaymentRequiredAt: paymentRequired ? DateTimeOffset.UtcNow : null, NotificationPolicySnapshot: notificationPolicy);
             await store.SaveHold(hold, ct);
             var summary = await lifecycle.HoldCreated(hold, null, ct);
             var audit = Audit(providerId, resourceId, null, hold.Id, "hold_created", "Temporary hold created for exclusive resource.", range, "accepted", lifecycleSummary: summary);
@@ -89,8 +90,9 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
             }
             var service = await store.GetService(serviceId, ct);
             var paymentPolicy = service?.PaymentPolicy;
+            var notificationPolicy = service?.NotificationPolicy;
             var paymentRequired = paymentPolicy?.RequiresPaymentBeforeConfirmation == true;
-            var hold = new Hold(HoldId.New(), old.ProviderId, serviceId, resourceId, range, Token(), null, "active", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10), null, old.Id, reasonCode, message, safeActor, paymentRequired ? PaymentRequirementStatuses.Required : PaymentRequirementStatuses.NotRequired, paymentPolicy, null, paymentRequired ? DateTimeOffset.UtcNow : null);
+            var hold = new Hold(HoldId.New(), old.ProviderId, serviceId, resourceId, range, Token(), null, "active", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10), null, old.Id, reasonCode, message, safeActor, paymentRequired ? PaymentRequirementStatuses.Required : PaymentRequirementStatuses.NotRequired, paymentPolicy, null, paymentRequired ? DateTimeOffset.UtcNow : null, null, notificationPolicy);
             await store.SaveHold(hold, ct);
             var summary = await lifecycle.HoldCreated(hold, null, ct);
             details = RescheduleDetails(old, hold, null, range, resourceId, safeActor, reasonCode, message);
@@ -136,7 +138,7 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
             if (hold.ReplacementForBookingId is not null && (oldBooking is null || oldBooking.Status != "confirmed")) { await store.AppendAudit(Audit(hold.ProviderId, hold.ResourceId, oldBooking?.Id, hold.Id, "booking_reschedule_failed", "Replacement confirmation failed because the original booking is no longer confirmed.", hold.Range, "rejected", "original_not_confirmed", actor: hold.RescheduleActor ?? "local-dev"), ct); return (null, "booking_not_reschedulable"); }
             var bookings = await store.GetBookings(hold.ProviderId, hold.ResourceId, ct);
             if (bookings.Any(b => b.Status == "confirmed" && b.Id != hold.ReplacementForBookingId && Overlaps(b.Range, hold.Range))) { await store.AppendAudit(Audit(hold.ProviderId, hold.ResourceId, null, hold.Id, hold.ReplacementForBookingId is null ? "booking_rejected" : "booking_reschedule_failed", "Booking rejected due to confirmed booking conflict.", hold.Range, "rejected", "booking"), ct); return (null, "slot_conflict"); }
-            var booking = new Booking(BookingId.New(), hold.ProviderId, hold.ServiceId, hold.ResourceId, customer, hold.Range, "confirmed", "m20-local-policy-payment-snapshot", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, RescheduledFromBookingId: hold.ReplacementForBookingId, ReplacementHoldId: hold.ReplacementForBookingId is null ? null : hold.Id, PaymentRequirementStatus: hold.PaymentRequirementStatus, PaymentPolicySnapshot: hold.PaymentPolicySnapshot, PaymentReference: hold.PaymentReference, PaymentRequiredAt: hold.PaymentRequiredAt, PaymentSatisfiedAt: hold.PaymentSatisfiedAt);
+            var booking = new Booking(BookingId.New(), hold.ProviderId, hold.ServiceId, hold.ResourceId, customer, hold.Range, "confirmed", "m20-local-policy-payment-snapshot", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, RescheduledFromBookingId: hold.ReplacementForBookingId, ReplacementHoldId: hold.ReplacementForBookingId is null ? null : hold.Id, PaymentRequirementStatus: hold.PaymentRequirementStatus, PaymentPolicySnapshot: hold.PaymentPolicySnapshot, PaymentReference: hold.PaymentReference, PaymentRequiredAt: hold.PaymentRequiredAt, PaymentSatisfiedAt: hold.PaymentSatisfiedAt, NotificationPolicySnapshot: hold.NotificationPolicySnapshot);
             await store.SaveBooking(booking, ct);
             await store.ExpireHold(hold with { Status = "confirmed" }, ct);
             var summary = await lifecycle.Confirmed(hold, booking, null, ct);
@@ -144,6 +146,8 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
             var audit = Audit(hold.ProviderId, hold.ResourceId, booking.Id, hold.Id, "booking_confirmed", "Hold confirmed into booking.", hold.Range, "accepted", lifecycleSummary: summary);
             await store.AppendAudit(audit, ct);
             await lifecycle.Confirmed(hold, booking, audit.EventId, ct);
+            var notificationAudit = await ApplyNotificationPolicy(booking, hold.NotificationPolicySnapshot, NotificationTriggers.BookingConfirmed, null, null, "local-dev", ct);
+            if (notificationAudit is not null) await lifecycle.Confirmed(hold, booking, notificationAudit, ct);
             if (oldBooking is not null)
             {
                 var details = RescheduleDetails(oldBooking, hold, booking, hold.Range, hold.ResourceId, hold.RescheduleActor ?? "local-dev", hold.RescheduleReasonCode ?? "unspecified", hold.RescheduleMessage);
@@ -152,6 +156,7 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
                 var oldSummary = await lifecycle.Rescheduled(rescheduled, null, ct);
                 var oldAudit = Audit(rescheduled.ProviderId, rescheduled.ResourceId, rescheduled.Id, hold.Id, "booking_rescheduled", "Original booking rescheduled after replacement booking confirmation.", rescheduled.Range, "accepted", lifecycleSummary: oldSummary, actor: hold.RescheduleActor ?? "local-dev", extra: details);
                 await store.AppendAudit(oldAudit, ct);
+                await CancelPendingNotifications(rescheduled, "rescheduled", hold.RescheduleActor ?? "local-dev", booking.Id, ct);
                 oldSummary = await lifecycle.Rescheduled(rescheduled, oldAudit.EventId, ct);
                 var newAudit = Audit(booking.ProviderId, booking.ResourceId, booking.Id, hold.Id, "booking_reschedule_confirmed", "Replacement booking confirmed and linked to original booking.", booking.Range, "accepted", lifecycleSummary: summary, actor: hold.RescheduleActor ?? "local-dev", extra: details);
                 await store.AppendAudit(newAudit, ct);
@@ -214,11 +219,73 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
             var summary = await lifecycle.Cancelled(cancelled, null, ct);
             var audit = Audit(cancelled.ProviderId, cancelled.ResourceId, cancelled.Id, null, "booking_cancelled", "Booking cancelled and resource interval released.", cancelled.Range, "accepted", lifecycleSummary: summary, actor: safeActor, extra: details);
             await store.AppendAudit(audit, ct);
+            await CancelPendingNotifications(cancelled, "booking_cancelled", safeActor, null, ct);
             summary = await lifecycle.Cancelled(cancelled, audit.EventId, ct);
             return (cancelled, null, audit.EventId, summary);
         }
         finally { gate.Release(); }
     }
+
+    public async Task<(ScheduledNotification? Notification, string? Error, string? AuditEventId)> FakeSendNotification(NotificationId id, string? actor, CancellationToken ct = default)
+    {
+        var n = await store.GetNotification(id, ct);
+        if (n is null) return (null, "not_found", null);
+        if (n.Status != NotificationStatuses.Pending) return (null, "notification_not_pending", null);
+        var updated = n with { Status = NotificationStatuses.SentFake, UpdatedAt = DateTimeOffset.UtcNow, Reason = "fake/local dev-only send" };
+        await store.SaveNotification(updated, ct);
+        if (await store.GetBooking(updated.BookingId, ct) is { } booking) await RefreshNotificationSummary(booking, ct);
+        var audit = Audit(updated.ProviderId, updated.ResourceId, updated.BookingId, null, "notification_sent_fake", "Fake/local notification marked sent for development and tests only.", actor: string.IsNullOrWhiteSpace(actor) ? "local-dev" : actor.Trim(), extra: NotificationAuditData(updated));
+        await store.AppendAudit(audit, ct);
+        return (updated, null, audit.EventId);
+    }
+
+    private async Task<string?> ApplyNotificationPolicy(Booking booking, SchedulingNotificationPolicy? policy, string trigger, BookingId? linkedOld, BookingId? linkedNew, string actor, CancellationToken ct)
+    {
+        if (policy?.Enabled != true || policy.Rules.Count == 0)
+        {
+            await store.AppendAudit(Audit(booking.ProviderId, booking.ResourceId, booking.Id, null, "notification_skipped", "Notification policy disabled or empty; no records scheduled.", booking.Range, "skipped", actor: actor, extra: new Dictionary<string, string> { ["bookingId"] = booking.Id.Value, ["trigger"] = trigger, ["status"] = NotificationStatuses.Skipped }), ct);
+            return null;
+        }
+        var applied = Audit(booking.ProviderId, booking.ResourceId, booking.Id, null, "notification_policy_applied", "Notification policy applied to booking without external provider sends.", booking.Range, "accepted", actor: actor, extra: new Dictionary<string, string> { ["bookingId"] = booking.Id.Value, ["trigger"] = trigger, ["ruleCount"] = policy.Rules.Count.ToString() });
+        await store.AppendAudit(applied, ct);
+        string? last = applied.EventId;
+        foreach (var rule in policy.Rules.Where(r => r.Trigger == trigger || r.Trigger == NotificationTriggers.BeforeBookingStart))
+        {
+            var status = rule.Channel is NotificationChannels.None ? NotificationStatuses.Skipped : NotificationStatuses.Pending;
+            var when = rule.Trigger == NotificationTriggers.BeforeBookingStart ? booking.Range.StartsAtUtc.AddMinutes(-(rule.OffsetMinutesBeforeStart ?? 60)) : DateTimeOffset.UtcNow;
+            var n = new ScheduledNotification(NotificationId.New(), booking.ProviderId, booking.Id, booking.ServiceId, booking.ResourceId, rule.Trigger, rule.Channel, rule.RecipientType, rule.TemplateKey, when, status, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, linkedOld, linkedNew);
+            await store.SaveNotification(n, ct);
+            var evtType = status == NotificationStatuses.Skipped ? "notification_skipped" : "notification_scheduled";
+            var audit = Audit(booking.ProviderId, booking.ResourceId, booking.Id, null, evtType, "Notification record created for future authorized actuation; no provider send occurred.", booking.Range, status, actor: actor, extra: NotificationAuditData(n));
+            await store.AppendAudit(audit, ct);
+            last = audit.EventId;
+        }
+        await RefreshNotificationSummary(booking, ct);
+        return last;
+    }
+
+    private async Task CancelPendingNotifications(Booking booking, string reason, string actor, BookingId? linkedNew, CancellationToken ct)
+    {
+        foreach (var n in (await store.GetNotifications(booking.ProviderId, booking.Id, ct)).Where(n => n.Status == NotificationStatuses.Pending))
+        {
+            var cancelled = n with { Status = NotificationStatuses.Cancelled, UpdatedAt = DateTimeOffset.UtcNow, Reason = reason, LinkedNewBookingId = linkedNew ?? n.LinkedNewBookingId };
+            await store.SaveNotification(cancelled, ct);
+            await store.AppendAudit(Audit(booking.ProviderId, booking.ResourceId, booking.Id, null, "notification_cancelled", "Pending notification cancelled by booking lifecycle change.", booking.Range, NotificationStatuses.Cancelled, actor: actor, extra: NotificationAuditData(cancelled)), ct);
+        }
+        await RefreshNotificationSummary(booking, ct);
+    }
+
+    private async Task RefreshNotificationSummary(Booking booking, CancellationToken ct)
+    {
+        var all = await store.GetNotifications(booking.ProviderId, booking.Id, ct);
+        var summary = new NotificationSummary(all.Count(n => n.Status == NotificationStatuses.Pending), all.Count(n => n.Status == NotificationStatuses.SentFake), all.Count(n => n.Status == NotificationStatuses.Cancelled), all.Count(n => n.Status == NotificationStatuses.Skipped), all.Count(n => n.Status == NotificationStatuses.Failed), all.Count(n => n.Status == NotificationStatuses.DeferredProviderUnavailable));
+        await store.SaveBooking(booking with { NotificationSummary = summary }, ct);
+    }
+
+    private static IReadOnlyDictionary<string, string> NotificationAuditData(ScheduledNotification n) => new Dictionary<string, string>
+    {
+        ["bookingId"] = n.BookingId.Value, ["notificationId"] = n.Id.Value, ["channel"] = n.Channel, ["recipientType"] = n.RecipientType, ["trigger"] = n.Trigger, ["templateKey"] = n.TemplateKey, ["scheduledForUtc"] = n.ScheduledForUtc.ToString("O"), ["status"] = n.Status, ["reason"] = n.Reason ?? "", ["oldBookingId"] = n.LinkedOldBookingId?.Value ?? "", ["newBookingId"] = n.LinkedNewBookingId?.Value ?? ""
+    };
 
     private static IReadOnlyDictionary<string, string> PaymentAuditData(Hold hold) => new Dictionary<string, string>
     {

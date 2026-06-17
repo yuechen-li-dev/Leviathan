@@ -5,7 +5,7 @@ namespace Leviathan.Server.Apps.Scheduling.Api;
 
 public sealed record CreateProviderRequest(string Slug, string DisplayName, string TimeZoneId, string? ContactEmail, string? PublicDescription);
 public sealed record CreateResourceRequest(string ProviderId, string DisplayName, string ResourceType, string? TimeZoneId);
-public sealed record CreateServiceRequest(string ProviderId, string Name, string? Description, int DurationMinutes, int BufferBeforeMinutes = 0, int BufferAfterMinutes = 0, bool IsPublic = true, SchedulingPaymentPolicy? PaymentPolicy = null);
+public sealed record CreateServiceRequest(string ProviderId, string Name, string? Description, int DurationMinutes, int BufferBeforeMinutes = 0, int BufferAfterMinutes = 0, bool IsPublic = true, SchedulingPaymentPolicy? PaymentPolicy = null, SchedulingNotificationPolicy? NotificationPolicy = null);
 public sealed record AssignResourceRequest(string ProviderId, string ResourceId);
 public sealed record CreateAvailabilityRuleRequest(string ProviderId, string ResourceId, string TimeZoneId, DayOfWeek[] DaysOfWeek, string LocalStartTime, string LocalEndTime, DateOnly? EffectiveFrom, DateOnly? EffectiveUntil);
 public sealed record BookableSlotDto(string ProviderId, string ServiceId, string ResourceId, DateTimeOffset StartsAtUtc, DateTimeOffset EndsAtUtc, string TimeZoneId, string DisplayLabel, string ProviderTimeZoneId, string DisplayTimeZoneId, string DisplayStartsAtLocal, string DisplayEndsAtLocal);
@@ -21,3 +21,6 @@ public sealed record SchedulingError(string Error, string Message);
 public sealed record FakeSatisfyPaymentRequest(string ClaimToken, string? Actor);
 public sealed record FakeSatisfyPaymentResponse(string HoldId, string PaymentRequirementStatus, string PaymentReference, DateTimeOffset PaymentSatisfiedAt, string AuditEventId);
 public sealed record IcsBookingDto(string Content);
+
+public sealed record FakeSendNotificationRequest(string? Actor);
+public sealed record NotificationMutationResponse(ScheduledNotification Notification, string AuditEventId);

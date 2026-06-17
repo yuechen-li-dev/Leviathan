@@ -2,9 +2,45 @@ namespace Leviathan.Server.Apps.Scheduling.Domain;
 
 public sealed record Provider(ProviderId Id, string Slug, string DisplayName, string TimeZoneId, string? ContactEmail, string? PublicDescription, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, string? AccountId = null, string? AppInstallationId = null);
 public sealed record BookableResource(ResourceId Id, ProviderId ProviderId, string DisplayName, string ResourceType, string TimeZoneId, string CapacityMode, bool IsActive, DateTimeOffset CreatedAt);
-public sealed record SchedulingService(ServiceId Id, ProviderId ProviderId, string Name, string? Description, int DurationMinutes, int BufferBeforeMinutes, int BufferAfterMinutes, IReadOnlyList<ResourceId> AssignedResourceIds, bool IsPublic, DateTimeOffset CreatedAt, SchedulingPaymentPolicy? PaymentPolicy = null);
+public sealed record SchedulingService(ServiceId Id, ProviderId ProviderId, string Name, string? Description, int DurationMinutes, int BufferBeforeMinutes, int BufferAfterMinutes, IReadOnlyList<ResourceId> AssignedResourceIds, bool IsPublic, DateTimeOffset CreatedAt, SchedulingPaymentPolicy? PaymentPolicy = null, SchedulingNotificationPolicy? NotificationPolicy = null);
 public sealed record AvailabilityRule(AvailabilityRuleId Id, ProviderId ProviderId, ResourceId ResourceId, string TimeZoneId, IReadOnlyList<DayOfWeek> DaysOfWeek, TimeOnly LocalStartTime, TimeOnly LocalEndTime, DateOnly? EffectiveFrom, DateOnly? EffectiveUntil, bool IsActive, DateTimeOffset CreatedAt);
-public sealed record BookingPolicy(string PolicyId, ProviderId ProviderId, int HoldTtlMinutes, int MinimumNoticeMinutes, int MaximumAdvanceDays, bool RequiresDeposit, bool RequiresPrepay, SchedulingPaymentPolicy? PaymentPolicy = null);
+public sealed record BookingPolicy(string PolicyId, ProviderId ProviderId, int HoldTtlMinutes, int MinimumNoticeMinutes, int MaximumAdvanceDays, bool RequiresDeposit, bool RequiresPrepay, SchedulingPaymentPolicy? PaymentPolicy = null, SchedulingNotificationPolicy? NotificationPolicy = null);
+
+public sealed record SchedulingNotificationPolicy(bool Enabled, IReadOnlyList<NotificationRule> Rules)
+{
+    public static SchedulingNotificationPolicy None() => new(false, []);
+}
+public sealed record NotificationRule(string Trigger, string Channel, string RecipientType, string TemplateKey, int? OffsetMinutesBeforeStart = null);
+public sealed record ScheduledNotification(NotificationId Id, ProviderId ProviderId, BookingId BookingId, ServiceId ServiceId, ResourceId ResourceId, string Trigger, string Channel, string RecipientType, string TemplateKey, DateTimeOffset ScheduledForUtc, string Status, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, BookingId? LinkedOldBookingId = null, BookingId? LinkedNewBookingId = null, string? Reason = null);
+public sealed record NotificationSummary(int Pending, int SentFake, int Cancelled, int Skipped, int Failed, int DeferredProviderUnavailable);
+public static class NotificationChannels
+{
+    public const string None = "none";
+    public const string App = "app";
+    public const string Email = "email";
+    public const string Sms = "sms";
+    public const string Webhook = "webhook";
+    public const string ExternalDeferred = "external_deferred";
+}
+public static class NotificationStatuses
+{
+    public const string Pending = "pending";
+    public const string SentFake = "sent_fake";
+    public const string Cancelled = "cancelled";
+    public const string Skipped = "skipped";
+    public const string Failed = "failed";
+    public const string DeferredProviderUnavailable = "deferred_provider_unavailable";
+}
+public static class NotificationTriggers
+{
+    public const string BookingConfirmed = "booking_confirmed";
+    public const string BookingCancelled = "booking_cancelled";
+    public const string BookingRescheduled = "booking_rescheduled";
+    public const string BeforeBookingStart = "before_booking_start";
+    public const string PaymentRequired = "payment_required";
+    public const string HoldExpiring = "hold_expiring";
+}
+
 public sealed record MoneyAmount(long MinorUnits, string Currency)
 {
     public bool IsPositive => MinorUnits > 0 && Currency.Length == 3 && Currency.All(char.IsLetter);
@@ -51,6 +87,6 @@ public sealed record ZonedTimeRange(DateTimeOffset StartsAtUtc, DateTimeOffset E
 {
     public bool Overlaps(ZonedTimeRange other) => StartsAtUtc < other.EndsAtUtc && other.StartsAtUtc < EndsAtUtc;
 }
-public sealed record Hold(HoldId Id, ProviderId ProviderId, ServiceId ServiceId, ResourceId ResourceId, ZonedTimeRange Range, string ClaimToken, CustomerContact? CustomerDraft, string Status, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, DateTimeOffset? IntakeSubmittedAt, BookingId? ReplacementForBookingId = null, string? RescheduleReasonCode = null, string? RescheduleMessage = null, string? RescheduleActor = null, string PaymentRequirementStatus = PaymentRequirementStatuses.NotRequired, SchedulingPaymentPolicy? PaymentPolicySnapshot = null, string? PaymentReference = null, DateTimeOffset? PaymentRequiredAt = null, DateTimeOffset? PaymentSatisfiedAt = null);
-public sealed record Booking(BookingId Id, ProviderId ProviderId, ServiceId ServiceId, ResourceId ResourceId, CustomerContact Customer, ZonedTimeRange Range, string Status, string PolicySnapshot, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset ConfirmedAt, DateTimeOffset? CancelledAt, string? CancellationReasonCode = null, string? CancellationMessage = null, string? CancellationActor = null, string? CancellationPolicyResult = null, BookingId? RescheduledFromBookingId = null, BookingId? RescheduledToBookingId = null, DateTimeOffset? RescheduledAt = null, string? RescheduleReasonCode = null, string? RescheduleMessage = null, string? RescheduleActor = null, HoldId? ReplacementHoldId = null, BookingId? ReplacementBookingId = null, string PaymentRequirementStatus = PaymentRequirementStatuses.NotRequired, SchedulingPaymentPolicy? PaymentPolicySnapshot = null, string? PaymentReference = null, DateTimeOffset? PaymentRequiredAt = null, DateTimeOffset? PaymentSatisfiedAt = null);
+public sealed record Hold(HoldId Id, ProviderId ProviderId, ServiceId ServiceId, ResourceId ResourceId, ZonedTimeRange Range, string ClaimToken, CustomerContact? CustomerDraft, string Status, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, DateTimeOffset? IntakeSubmittedAt, BookingId? ReplacementForBookingId = null, string? RescheduleReasonCode = null, string? RescheduleMessage = null, string? RescheduleActor = null, string PaymentRequirementStatus = PaymentRequirementStatuses.NotRequired, SchedulingPaymentPolicy? PaymentPolicySnapshot = null, string? PaymentReference = null, DateTimeOffset? PaymentRequiredAt = null, DateTimeOffset? PaymentSatisfiedAt = null, SchedulingNotificationPolicy? NotificationPolicySnapshot = null);
+public sealed record Booking(BookingId Id, ProviderId ProviderId, ServiceId ServiceId, ResourceId ResourceId, CustomerContact Customer, ZonedTimeRange Range, string Status, string PolicySnapshot, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset ConfirmedAt, DateTimeOffset? CancelledAt, string? CancellationReasonCode = null, string? CancellationMessage = null, string? CancellationActor = null, string? CancellationPolicyResult = null, BookingId? RescheduledFromBookingId = null, BookingId? RescheduledToBookingId = null, DateTimeOffset? RescheduledAt = null, string? RescheduleReasonCode = null, string? RescheduleMessage = null, string? RescheduleActor = null, HoldId? ReplacementHoldId = null, BookingId? ReplacementBookingId = null, string PaymentRequirementStatus = PaymentRequirementStatuses.NotRequired, SchedulingPaymentPolicy? PaymentPolicySnapshot = null, string? PaymentReference = null, DateTimeOffset? PaymentRequiredAt = null, DateTimeOffset? PaymentSatisfiedAt = null, SchedulingNotificationPolicy? NotificationPolicySnapshot = null, NotificationSummary? NotificationSummary = null);
 public sealed record BookingAuditEvent(string EventId, ProviderId ProviderId, ResourceId? ResourceId, BookingId? BookingId, HoldId? HoldId, string EventType, DateTimeOffset OccurredAt, string Actor, string CorrelationId, string Message, IReadOnlyDictionary<string, string> Data);
