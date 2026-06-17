@@ -11,6 +11,8 @@ namespace Leviathan.Server.Tests;
 
 public sealed class SchedulingM8Tests
 {
+    private static readonly System.Text.Json.JsonSerializerOptions TestJson = new(System.Text.Json.JsonSerializerDefaults.Web);
+
     [Fact]
     public async Task Registry_exposes_rust_simulator_and_scheduling()
     {
@@ -113,8 +115,8 @@ public sealed class SchedulingM8Tests
         var start = DateTimeOffset.Parse("2030-01-07T10:00:00Z");
         var hold = await Hold(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, start, start.AddMinutes(30));
         var path = Path.Combine(fixture.DataDir, "scheduling", "providers", setup.ProviderId, "holds", "active", hold.HoldId + ".json");
-        var stored = (await System.Text.Json.JsonSerializer.DeserializeAsync<Hold>(File.OpenRead(path), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)))!;
-        await File.WriteAllTextAsync(path, System.Text.Json.JsonSerializer.Serialize(stored with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+        var stored = await ReadHoldJson(path);
+        await WriteHoldJson(path, stored with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) });
         var released = await Hold(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, start, start.AddMinutes(30));
         Assert.Equal("active", released.Status);
     }
@@ -166,8 +168,8 @@ public sealed class SchedulingM8Tests
         var start = DateTimeOffset.Parse("2030-01-07T11:00:00Z");
         var hold = await Hold(client, setup.ProviderId, setup.ServiceId, setup.ResourceId, start, start.AddMinutes(30));
         var path = Path.Combine(fixture.DataDir, "scheduling", "providers", setup.ProviderId, "holds", "active", hold.HoldId + ".json");
-        var stored = (await System.Text.Json.JsonSerializer.DeserializeAsync<Hold>(File.OpenRead(path), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)))!;
-        await File.WriteAllTextAsync(path, System.Text.Json.JsonSerializer.Serialize(stored with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+        var stored = await ReadHoldJson(path);
+        await WriteHoldJson(path, stored with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) });
 
         var response = await client.PostAsJsonAsync($"/api/apps/scheduling/holds/{hold.HoldId}/intake", new SubmitIntakeRequest(hold.ClaimToken, "Ada", "ada@example.test", null, null));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -338,8 +340,8 @@ public sealed class SchedulingM8Tests
         var newStart = DateTimeOffset.Parse("2030-01-07T10:00:00Z");
         var hold = (await (await client.PostAsJsonAsync($"/api/apps/scheduling/bookings/{old.Id.Value}/reschedule/holds", new CreateReplacementHoldRequest(setup.ServiceId, setup.ResourceId, newStart, newStart.AddMinutes(30), "UTC", null, "customer_requested", null, "provider"))).Content.ReadFromJsonAsync<ReplacementHoldResponse>())!;
         var path = Path.Combine(fixture.DataDir, "scheduling", "providers", setup.ProviderId, "holds", "active", hold.ReplacementHoldId + ".json");
-        var stored = (await System.Text.Json.JsonSerializer.DeserializeAsync<Hold>(File.OpenRead(path), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)))!;
-        await File.WriteAllTextAsync(path, System.Text.Json.JsonSerializer.Serialize(stored with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+        var stored = await ReadHoldJson(path);
+        await WriteHoldJson(path, stored with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) });
         var confirm = await client.PostAsJsonAsync("/api/apps/scheduling/bookings/confirm", new ConfirmBookingRequest(hold.ReplacementHoldId, hold.ClaimToken, new CustomerContact("Ada", "ada@example.test", null, null)));
         Assert.Equal(HttpStatusCode.BadRequest, confirm.StatusCode);
         Assert.Equal("confirmed", (await client.GetFromJsonAsync<Booking>($"/api/apps/scheduling/bookings/{old.Id.Value}"))!.Status);
@@ -575,7 +577,18 @@ public sealed class SchedulingM8Tests
     {
         var dir = Path.Combine(dataDir, "scheduling", "providers", provider.Id.Value);
         Directory.CreateDirectory(dir);
-        await File.WriteAllTextAsync(Path.Combine(dir, "provider.json"), System.Text.Json.JsonSerializer.Serialize(provider, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+        await File.WriteAllTextAsync(Path.Combine(dir, "provider.json"), System.Text.Json.JsonSerializer.Serialize(provider, TestJson));
+    }
+
+    private static async Task<Hold> ReadHoldJson(string path)
+    {
+        await using var stream = File.OpenRead(path);
+        return (await System.Text.Json.JsonSerializer.DeserializeAsync<Hold>(stream, TestJson))!;
+    }
+
+    private static Task WriteHoldJson(string path, Hold hold)
+    {
+        return File.WriteAllTextAsync(path, System.Text.Json.JsonSerializer.Serialize(hold, TestJson));
     }
 
     private static async Task<HoldResponse> Hold(HttpClient client, string providerId, string serviceId, string resourceId, DateTimeOffset start, DateTimeOffset end)

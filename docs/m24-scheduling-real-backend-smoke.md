@@ -211,8 +211,36 @@ Useful upstream suggestions:
 - mobile/tablet real-backend smoke was not added yet; M24 live smoke runs the minimal desktop path;
 - reschedule remains unverified in browser UI;
 - fixture copy still exceeds live-path polish in some places;
-- `dotnet restore` and `dotnet test` from repo root currently fail against `Leviathan.slnx` in this environment with `Cannot create a file when that file already exists`;
-- targeted backend tests on `tests/Leviathan.Server.Tests/Leviathan.Server.Tests.csproj` still show pre-existing file-lock failures in three `SchedulingM8Tests` hold-expiry tests.
+- the real-backend smoke is still more expensive than fixture smoke because it boots both preview and ASP.NET backend processes;
+- the real smoke remains best treated as release-gating or milestone-verification coverage, not the default loop for every frontend edit.
+
+## M24.5 hygiene follow-up
+
+M24.5 closed the two M24 hygiene issues that blocked a clean "canonical command" story in that earlier environment:
+
+- the three `SchedulingM8Tests` hold-expiry failures were test-side Windows file-lock bugs caused by opening hold JSON with `File.OpenRead(...)` and rewriting the same path before disposing the read handle;
+- solution-level `.NET` verification now passes in this environment, including bare repo-root `dotnet restore` and `dotnet test`.
+
+Canonical `.NET` commands should still prefer the explicit solution file for clarity:
+
+```bash
+dotnet restore Leviathan.slnx
+dotnet build Leviathan.slnx
+dotnet test Leviathan.slnx
+```
+
+Bare repo-root forms also passed during M24.5 verification:
+
+```bash
+dotnet restore
+dotnet test
+```
+
+but `Leviathan.slnx` remains the canonical target to document and automate.
+
+MachinaLayout.JS friction from M22-M24 is now consolidated in:
+
+- `docs/m24_5-machina-layout-friction-report.md`
 
 ## Verification
 
@@ -229,20 +257,23 @@ npm run test:e2e:real
 Backend:
 
 ```bash
+dotnet restore Leviathan.slnx
 dotnet build Leviathan.slnx
-dotnet test tests/Leviathan.Server.Tests/Leviathan.Server.Tests.csproj
+dotnet test Leviathan.slnx
 ```
 
 Observed in this environment:
 
+- `dotnet restore Leviathan.slnx`: passed
+- `dotnet build Leviathan.slnx`: passed
+- `dotnet test Leviathan.slnx`: passed
+- `dotnet restore`: passed at repo root
+- `dotnet test`: passed at repo root
+- targeted `dotnet test tests/Leviathan.Server.Tests/Leviathan.Server.Tests.csproj --filter SchedulingM8Tests`: passed after the file-handle fix
 - `npm run build`: passed
 - `npm test -- --run`: passed
 - `npm run test:e2e`: passed with the real smoke correctly skipped
 - `npm run test:e2e:real`: passed
-- `dotnet build Leviathan.slnx`: passed
-- `dotnet restore`: failed at repo root due `.slnx` file-creation error
-- `dotnet test`: failed at repo root due the same `.slnx` issue
-- targeted `dotnet test tests/Leviathan.Server.Tests/Leviathan.Server.Tests.csproj`: failed in three pre-existing file-lock expiry tests
 
 ## Recommended M25
 
