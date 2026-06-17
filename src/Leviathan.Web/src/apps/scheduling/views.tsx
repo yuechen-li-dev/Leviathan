@@ -1,5 +1,5 @@
 import type { MachinaSlotProps } from "machinalayout/react";
-import type { BookableSlot, Booking, BookingAuditEvent, SchedulingLifecycleSummary, SchedulingService } from "./types";
+import type { BookableSlot, Booking, BookingAuditEvent, LocalDevPlatformContext, SchedulingLifecycleSummary, SchedulingService } from "./types";
 import { schedulingEndpoints } from "./api";
 import { slotSelected } from "./dispatch";
 
@@ -7,6 +7,7 @@ type SlotProps = MachinaSlotProps<unknown, { dispatch?: (event: unknown) => void
 export const localDevAdminWarning = "Local/dev admin mode. Provider setup endpoints are intentionally unsafe and require `LEVIATHAN_ALLOW_UNSAFE_ADMIN=true`. Do not expose this server publicly.";
 export const adminGateMessage = "Provider setup is blocked because unsafe local/dev admin mode is disabled. Restart the backend with LEVIATHAN_ALLOW_UNSAFE_ADMIN=true for local demos only.";
 export const isUnsafeAdminError = (message?: string) => !!message && (message.includes("unsafe_admin_disabled") || message.includes("LEVIATHAN_ALLOW_UNSAFE_ADMIN") || message.includes("X-Leviathan-Unsafe-Admin"));
+export const isOwnershipError = (message?: string) => !!message && (message.includes("provider_owner_forbidden") || message.includes("not owned") || message.includes("owner_forbidden"));
 
 export function SchedulingHomeView() {
   return <section className="panel scheduling-home"><h2>Scheduling</h2><p>Demo provider setup, public booking, cancellation, audit, and lifecycle inspection for the local Scheduling app.</p><p><a href="/apps/scheduling/setup">Provider setup</a> · <a href="/apps/scheduling/bookings">Bookings</a></p><AdminModeBanner /></section>;
@@ -14,9 +15,9 @@ export function SchedulingHomeView() {
 export function AdminModeBanner({ errorMessage }: { errorMessage?: string }) {
   return <aside className="scheduling-admin-warning" role={errorMessage ? "alert" : "note"}><strong>{isUnsafeAdminError(errorMessage) ? "Admin gate blocked." : "Local/dev admin mode."}</strong> {isUnsafeAdminError(errorMessage) ? adminGateMessage : localDevAdminWarning}</aside>;
 }
-export function ProviderSetupView({ errorMessage, providerSlug = "demo-provider", providerTimeZone = browserTimeZone() }: { errorMessage?: string; providerSlug?: string; providerTimeZone?: string }) {
+export function ProviderSetupView({ errorMessage, providerSlug = "demo-provider", providerTimeZone = browserTimeZone(), localDevContext }: { errorMessage?: string; providerSlug?: string; providerTimeZone?: string; localDevContext?: LocalDevPlatformContext }) {
   const publicLink = `/book/${providerSlug}`;
-  return <section className="panel scheduling-setup"><h2>Provider setup</h2><AdminModeBanner errorMessage={errorMessage} /><ol><li>Create provider <code>{providerSlug}</code> in <code>{providerTimeZone}</code>.</li><li>Create a <code>person</code> resource.</li><li>Create a public 30 minute service.</li><li>Assign the service to the resource.</li><li>Create Monday 09:00–17:00 availability.</li></ol><p>Generated public booking link: <a href={publicLink}>{publicLink}</a></p></section>;
+  return <section className="panel scheduling-setup"><h2>Provider setup</h2><AdminModeBanner errorMessage={errorMessage} />{localDevContext ? <aside className="scheduling-ownership" role="note"><strong>Local-dev owner:</strong> account <code>{localDevContext.accountId}</code> · Scheduling installation <code>{localDevContext.schedulingInstallation.appInstallationId.value}</code>. Ownership is assigned by the backend; do not enter account ids.</aside> : null}{errorMessage && isOwnershipError(errorMessage) ? <p role="alert">This provider is not owned by the current local-dev Scheduling installation.</p> : null}<ol><li>Create provider <code>{providerSlug}</code> in <code>{providerTimeZone}</code>.</li><li>Create a <code>person</code> resource.</li><li>Create a public 30 minute service.</li><li>Assign the service to the resource.</li><li>Create Monday 09:00–17:00 availability.</li></ol><p>Generated public booking link: <a href={publicLink}>{publicLink}</a></p></section>;
 }
 export function SlotPickerView(props: SlotProps & { slots?: BookableSlot[]; errorMessage?: string; providerName?: string; services?: SchedulingService[] }) {
   const slots = props.slots ?? [];
@@ -37,4 +38,4 @@ export function BookingDebugPanel({ booking, auditEvents, lifecycle }: { booking
 }
 function browserTimeZone() { return typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" : "UTC"; }
 function statusLabel(status: string) { return status === "confirmed" ? "Confirmed" : status === "cancelled" ? "Cancelled" : status; }
-function controlledSchedulingError(message: string) { return isUnsafeAdminError(message) ? adminGateMessage : message; }
+function controlledSchedulingError(message: string) { return isUnsafeAdminError(message) ? adminGateMessage : isOwnershipError(message) ? "This provider is not owned by the current local-dev Scheduling installation." : message; }

@@ -7,6 +7,7 @@ public interface SchedulingStore
     Task SaveProvider(Provider provider, CancellationToken ct = default);
     Task<Provider?> GetProvider(ProviderId id, CancellationToken ct = default);
     Task<Provider?> GetProviderBySlug(string slug, CancellationToken ct = default);
+    Task<IReadOnlyList<Provider>> GetProviders(CancellationToken ct = default);
     Task SaveResource(BookableResource resource, CancellationToken ct = default);
     Task<IReadOnlyList<BookableResource>> GetResources(ProviderId providerId, CancellationToken ct = default);
     Task SaveService(SchedulingService service, CancellationToken ct = default);

@@ -253,6 +253,71 @@ public sealed class SchedulingM8Tests
         Assert.Equal(HttpStatusCode.BadRequest, cancelledIcs.StatusCode);
     }
 
+
+    [Fact]
+    public async Task M14_local_dev_context_and_provider_ownership_are_enforced()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+
+        var context = await client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/platform/local-dev/context");
+        Assert.Equal("local-dev", context.GetProperty("actorKind").GetString());
+        Assert.Equal("acct_local_dev", context.GetProperty("accountId").GetString());
+        Assert.Equal("inst_local_dev_scheduling", context.GetProperty("schedulingInstallation").GetProperty("appInstallationId").GetProperty("value").GetString());
+
+        var response = await client.PostAsJsonAsync("/api/apps/scheduling/providers", new { slug = "m14-owned", displayName = "Owned", timeZoneId = "UTC", accountId = "acct_attacker", appInstallationId = "inst_attacker" });
+        response.EnsureSuccessStatusCode();
+        Assert.Equal("local-dev-only", response.Headers.GetValues("X-Leviathan-Unsafe-Admin").Single());
+        var provider = (await response.Content.ReadFromJsonAsync<Provider>())!;
+        Assert.Equal("acct_local_dev", provider.AccountId);
+        Assert.Equal("inst_local_dev_scheduling", provider.AppInstallationId);
+
+        var adminFetch = await client.GetFromJsonAsync<Provider>($"/api/apps/scheduling/providers/{provider.Id.Value}");
+        Assert.Equal("acct_local_dev", adminFetch!.AccountId);
+
+        var publicFetch = await client.GetFromJsonAsync<Provider>("/api/apps/scheduling/public/m14-owned");
+        Assert.Equal(provider.Id, publicFetch!.Id);
+    }
+
+    [Fact]
+    public async Task M14_admin_list_backfills_old_records_and_hides_other_owner_records()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var owned = await CreateSetup(client, "m14-list-owned", twoResources: false);
+
+        var old = new Provider(new ProviderId("prov_old"), "m14-old", "Old", "UTC", null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var other = old with { Id = new ProviderId("prov_other"), Slug = "m14-other", AccountId = "acct_other", AppInstallationId = "inst_other" };
+        await WriteProviderJson(fixture.DataDir, old);
+        await WriteProviderJson(fixture.DataDir, other);
+
+        var providers = await client.GetFromJsonAsync<Provider[]>("/api/apps/scheduling/providers");
+        Assert.Contains(providers!, p => p.Id.Value == owned.ProviderId);
+        var backfilled = Assert.Single(providers!, p => p.Id.Value == "prov_old");
+        Assert.Equal("acct_local_dev", backfilled.AccountId);
+        Assert.DoesNotContain(providers!, p => p.Id.Value == "prov_other");
+
+        var otherFetch = await client.GetAsync("/api/apps/scheduling/providers/prov_other");
+        Assert.Equal(HttpStatusCode.NotFound, otherFetch.StatusCode);
+
+        var resourceForOther = await client.PostAsJsonAsync("/api/apps/scheduling/resources", new CreateResourceRequest("prov_other", "Room", "room", "UTC"));
+        Assert.Equal(HttpStatusCode.NotFound, resourceForOther.StatusCode);
+    }
+
+    [Fact]
+    public async Task M14_unsafe_disabled_blocks_context_and_mutation_with_controlled_error()
+    {
+        using var fixture = new LeviathanFactory(allowUnsafeAdmin: false);
+        var client = fixture.CreateClient();
+        var context = await client.GetAsync("/api/platform/local-dev/context");
+        Assert.Equal(HttpStatusCode.Forbidden, context.StatusCode);
+
+        var forbidden = await client.PostAsJsonAsync("/api/apps/scheduling/providers", new CreateProviderRequest("m14-blocked", "Blocked", "UTC", null, null));
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        var error = await forbidden.Content.ReadFromJsonAsync<SchedulingError>();
+        Assert.Equal("unsafe_admin_disabled", error!.Error);
+    }
+
     private static async Task<(string ProviderId, string ServiceId, string ResourceId, string? SecondResourceId)> CreateSetup(HttpClient client, string slug, bool twoResources, string timeZone = "UTC")
     {
         var provider = (await (await client.PostAsJsonAsync("/api/apps/scheduling/providers", new CreateProviderRequest(slug, "M8 Demo", timeZone, null, null))).Content.ReadFromJsonAsync<Provider>())!;
@@ -266,6 +331,13 @@ public sealed class SchedulingM8Tests
         if (second is not null) await client.PostAsJsonAsync("/api/apps/scheduling/availability-rules", new CreateAvailabilityRuleRequest(provider.Id.Value, second.Id.Value, timeZone, [DayOfWeek.Monday], "09:00", "12:00", null, null));
         return (provider.Id.Value, service.Id.Value, resource.Id.Value, second?.Id.Value);
     }
+    private static async Task WriteProviderJson(string dataDir, Provider provider)
+    {
+        var dir = Path.Combine(dataDir, "scheduling", "providers", provider.Id.Value);
+        Directory.CreateDirectory(dir);
+        await File.WriteAllTextAsync(Path.Combine(dir, "provider.json"), System.Text.Json.JsonSerializer.Serialize(provider, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+    }
+
     private static async Task<HoldResponse> Hold(HttpClient client, string providerId, string serviceId, string resourceId, DateTimeOffset start, DateTimeOffset end)
     {
         var response = await client.PostAsJsonAsync("/api/apps/scheduling/holds", new CreateHoldRequest(providerId, serviceId, resourceId, start, end, "UTC"));

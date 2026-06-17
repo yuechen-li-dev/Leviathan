@@ -128,3 +128,8 @@ Good next options:
 - Payment/deposit contract preparation without real providers.
 - Reminder/notification contract without provider integration.
 - Scheduling production-readiness preflight for auth/storage/deployment.
+
+
+## M14 ownership shim note
+
+M14 keeps the unsafe provider UX local-development-only but adds platform-shaped ownership behind it. Provider setup must not ask for an account id: the backend derives `acct_local_dev` and `inst_local_dev_scheduling` from the unsafe local-dev request context when `LEVIATHAN_ALLOW_UNSAFE_ADMIN=true`. If unsafe admin is disabled, provider mutations return `unsafe_admin_disabled`; public booking routes remain open by provider slug.
