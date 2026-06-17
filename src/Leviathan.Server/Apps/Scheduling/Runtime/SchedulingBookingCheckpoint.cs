@@ -18,7 +18,10 @@ public sealed record SchedulingBookingCheckpoint(
     string? LastAuditEventId,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    string? RescheduledFromBookingId = null,
+    string? RescheduledToBookingId = null,
+    string? ReplacementHoldId = null);
 
 public sealed record SchedulingLifecycleSummary(
     string Status,
@@ -33,4 +36,7 @@ public sealed record SchedulingLifecycleSummary(
     string? LastAuditEventId,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    string? RescheduledFromBookingId = null,
+    string? RescheduledToBookingId = null,
+    string? ReplacementHoldId = null);

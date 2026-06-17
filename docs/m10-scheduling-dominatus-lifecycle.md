@@ -130,3 +130,8 @@ Backend tests now prove:
 ## M11 cancellation update
 
 M11 exposes the previously reserved `Cancelled` workflow state for confirmed bookings. `POST /api/apps/scheduling/bookings/{bookingId}/cancel` writes a cancellation audit event, updates the booking-local Dominatus checkpoint to `Cancelled`, and refreshes lifecycle audit correlation with the final cancellation audit event id. Reschedule remains documented as a deferred workflow rather than a dedicated Dominatus transition.
+
+
+## M19 Rescheduled lifecycle
+
+M19 extends the Scheduling booking lifecycle with `Rescheduled`. When a linked replacement hold is confirmed into a new booking, the new booking lifecycle remains `Confirmed` and records `RescheduledFromBookingId`, while the old booking lifecycle moves from `Confirmed` to `Rescheduled` and records `RescheduledToBookingId` and `ReplacementHoldId`. Dominatus integration remains scoped to booking workflow checkpoints and does not move Scheduling product data into platform core.

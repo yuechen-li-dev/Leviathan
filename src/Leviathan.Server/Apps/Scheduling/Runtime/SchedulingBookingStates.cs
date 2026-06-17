@@ -9,6 +9,7 @@ public static class SchedulingBookingStates
     public const string Confirmed = "Confirmed";
     public const string Expired = "Expired";
     public const string Cancelled = "Cancelled";
+    public const string Rescheduled = "Rescheduled";
     public const string Completed = "Completed";
     public const string NoShow = "NoShow";
     public const string Failed = "Failed";
