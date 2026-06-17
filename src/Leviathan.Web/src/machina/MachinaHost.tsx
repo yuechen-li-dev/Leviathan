@@ -4,6 +4,7 @@ import { MachinaReactView } from "machinalayout/react";
 import { attachPopstateRouteAdapter, initialRouteFromLocation, mirrorRouteToHistory, replaceUnknownRoute, sessionIdFromPath } from "./browserHistoryAdapter";
 import { buildAppsLayout, buildRustSimulatorLayout } from "./layouts";
 import { buildSchedulingLayout } from "../apps/scheduling/layouts";
+import { resolveSchedulingFixtureScenario } from "../apps/scheduling/fixtures";
 import type { DispatchFn, LeviathanDispatch, ShellState } from "./types";
 import { commandForEvent, runShellCommand } from "./shellCommands";
 import { reduceShellState } from "./shellDispatch";
@@ -78,7 +79,13 @@ export function MachinaHost() {
     );
   }, [dispatch]);
 
-  const doc = state.route === "rust-simulator" ? buildRustSimulatorLayout(rootRect, state, debugEnabled && inspectorOpen) : state.route === "scheduling" ? buildSchedulingLayout(rootRect) : buildAppsLayout(rootRect, debugEnabled && inspectorOpen);
+  const schedulingScenario = state.route === "scheduling" ? resolveSchedulingFixtureScenario(window.location) : null;
+  const doc =
+    state.route === "rust-simulator"
+      ? buildRustSimulatorLayout(rootRect, state, debugEnabled && inspectorOpen)
+      : state.route === "scheduling" && schedulingScenario
+        ? buildSchedulingLayout(rootRect, schedulingScenario, debugEnabled && inspectorOpen)
+        : buildAppsLayout(rootRect, debugEnabled && inspectorOpen);
   const layout = useMemo(() => resolveLayoutRows(doc.rows, rootRect), [doc.rows, rootRect]);
   const layoutNodes = useMemo(() => inspectLayout(layout), [layout]);
   const recentEvents = historyRef.current.snapshot();

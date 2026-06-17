@@ -2,7 +2,7 @@
   color-scheme: dark;
   background: #0c0f14;
   color: #eef2f7;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
 }
 * {
   box-sizing: border-box;
@@ -82,6 +82,9 @@ input {
 .transcript h2 {
   margin-top: 0;
 }
+.card p:last-child {
+  margin-bottom: 0;
+}
 .nav {
   border-radius: 0;
   border-left: 0;
@@ -136,6 +139,229 @@ input {
 }
 .complete {
   color: #8affb1;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.scheduling-shell {
+  overflow: auto;
+}
+
+.scheduling-shell-hero h1,
+.scheduling-shell-main h2,
+.scheduling-shell-sidebar h2,
+.scheduling-shell-main h3,
+.scheduling-shell-sidebar h3 {
+  margin-top: 0;
+}
+
+.scheduling-eyebrow-row,
+.scheduling-section-head,
+.scheduling-chip-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.scheduling-eyebrow-row {
+  justify-content: space-between;
+  margin-bottom: 0.9rem;
+}
+
+.scheduling-eyebrow,
+.scheduling-route-badge,
+.status-chip,
+.scheduling-card-kicker,
+.scheduling-inline-note {
+  font-size: 0.8rem;
+  letter-spacing: 0.01em;
+}
+
+.scheduling-eyebrow,
+.scheduling-card-kicker {
+  color: #9bc0ff;
+  text-transform: uppercase;
+}
+
+.scheduling-route-badge {
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.14);
+  color: #cfe0ff;
+}
+
+.scheduling-hero-copy {
+  max-width: 54rem;
+  color: #c5d1df;
+}
+
+.scheduling-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.scheduling-stack-tight {
+  gap: 0.5rem;
+}
+
+.scheduling-subpanel {
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 14px;
+  background: rgba(7, 13, 24, 0.34);
+}
+
+.scheduling-action-grid,
+.scheduling-proof-grid,
+.scheduling-service-grid,
+.scheduling-slot-grid {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.scheduling-action-grid,
+.scheduling-proof-grid,
+.scheduling-service-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.scheduling-slot-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-top: 1rem;
+}
+
+.scheduling-slot-button {
+  width: 100%;
+  margin: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.scheduling-action-card,
+.scheduling-proof-card,
+.scheduling-service-card,
+.scheduling-setup-card {
+  height: 100%;
+}
+
+.scheduling-checklist,
+.scheduling-audit-list,
+.scheduling-sequence {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.scheduling-checklist-tight {
+  padding-left: 1rem;
+}
+
+.scheduling-inline-link {
+  color: #9bc0ff;
+}
+
+.scheduling-inline-note {
+  display: inline-block;
+  margin-left: 0.5rem;
+  color: #9fb3ca;
+}
+
+.scheduling-definition-list {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) 1fr;
+  gap: 0.5rem 0.75rem;
+  margin: 0;
+}
+
+.scheduling-definition-list dt {
+  color: #9fb3ca;
+}
+
+.scheduling-definition-list dd {
+  margin: 0;
+}
+
+.scheduling-two-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.scheduling-admin-warning,
+.scheduling-ownership {
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(251, 191, 36, 0.32);
+  background: rgba(120, 76, 12, 0.16);
+}
+
+.scheduling-ownership {
+  border-color: rgba(96, 165, 250, 0.28);
+  background: rgba(30, 64, 175, 0.15);
+}
+
+.scheduling-bookings-table-wrap {
+  overflow: auto;
+}
+
+.scheduling-bookings-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.scheduling-bookings-table th,
+.scheduling-bookings-table td {
+  padding: 0.8rem 0.65rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  vertical-align: top;
+  text-align: left;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  background: rgba(51, 65, 85, 0.54);
+}
+
+.status-chip-confirmed {
+  color: #9cf5be;
+  background: rgba(22, 101, 52, 0.24);
+}
+
+.status-chip-warning {
+  color: #ffd898;
+  background: rgba(146, 64, 14, 0.24);
+}
+
+.status-chip-danger {
+  color: #ffb4b4;
+  background: rgba(127, 29, 29, 0.26);
+}
+
+.status-chip-info {
+  color: #b5d8ff;
+  background: rgba(30, 64, 175, 0.22);
+}
+
+.status-chip-neutral {
+  color: #d5dce6;
 }
 
 .inspector-toggle {
@@ -215,5 +441,19 @@ input {
   .inspector textarea,
   .inspector-table {
     max-height: 180px;
+  }
+
+  .scheduling-eyebrow-row,
+  .scheduling-section-head {
+    align-items: flex-start;
+  }
+
+  .scheduling-definition-list,
+  .scheduling-two-column {
+    grid-template-columns: 1fr;
+  }
+
+  .scheduling-slot-grid {
+    grid-template-columns: 1fr;
   }
 }

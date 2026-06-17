@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { routeFromPath } from "../../machina/browserHistoryAdapter";
+import { mirrorRouteToHistory, routeFromPath } from "../../machina/browserHistoryAdapter";
 import { reduceShellState } from "../../machina/shellDispatch";
 import { createInitialShellState } from "../../machina/shellState";
 
@@ -9,4 +9,9 @@ describe("scheduling shell route", () => {
     expect(state.route).toBe("scheduling");
   });
   it("browser route maps to scheduling", () => { expect(routeFromPath("/apps/scheduling/setup")).toBe("scheduling"); expect(routeFromPath("/book/demo")).toBe("scheduling"); });
+  it("preserves scheduling subpaths when the shell route is already scheduling", () => {
+    const state = reduceShellState(createInitialShellState(), { type: "open-app", appId: "scheduling" });
+    const history = { pushState: (..._args: unknown[]) => { throw new Error("should not navigate"); }, replaceState: () => {} };
+    expect(() => mirrorRouteToHistory(state, history, { pathname: "/book/demo-provider" })).not.toThrow();
+  });
 });

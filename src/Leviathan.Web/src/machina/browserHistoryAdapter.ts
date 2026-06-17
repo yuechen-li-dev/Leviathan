@@ -28,6 +28,7 @@ export function mirrorRouteToHistory(
   historyLike: Pick<History, "pushState" | "replaceState"> = window.history,
   locationLike: Pick<Location, "pathname"> = window.location,
 ) {
+  if (state.route === "scheduling" && routeFromPath(locationLike.pathname) === "scheduling") return;
   const nextPath = pathForRoute(state.route, state.screen?.sessionId ?? state.requestedSessionId);
   if (locationLike.pathname === nextPath) return;
   historyLike.pushState(null, "", nextPath);
@@ -37,6 +38,7 @@ export function replaceUnknownRoute(
   historyLike: Pick<History, "replaceState"> = window.history,
   locationLike: Pick<Location, "pathname"> = window.location,
 ) {
+  if (routeFromPath(locationLike.pathname) !== "apps") return;
   if (locationLike.pathname !== pathForRoute(routeFromPath(locationLike.pathname))) {
     historyLike.replaceState(null, "", "/apps");
   }

@@ -1,5 +1,5 @@
 import { expect, type Page, type TestInfo } from "@playwright/test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 type MachinaDomNodeSummary = {
@@ -24,6 +24,12 @@ type HandoffSnapshotResult = {
   domSummaryPath: string;
   machinaSnapshotPath: string;
   handoffPath: string;
+  artifactExists: {
+    screenshot: boolean;
+    domSummary: boolean;
+    machinaSnapshot: boolean;
+    handoff: boolean;
+  };
   domSummary: {
     route: string;
     generatedAt: string;
@@ -121,6 +127,13 @@ export async function captureLeviathanUiHandoffBundle(
 
   await writeFile(handoffPath, JSON.stringify(handoff, null, 2));
 
+  const artifactExists = {
+    screenshot: await fileExists(screenshotPath),
+    domSummary: await fileExists(domSummaryPath),
+    machinaSnapshot: await fileExists(machinaSnapshotPath),
+    handoff: await fileExists(handoffPath),
+  };
+
   return {
     route: options.route,
     viewport,
@@ -128,7 +141,17 @@ export async function captureLeviathanUiHandoffBundle(
     domSummaryPath,
     machinaSnapshotPath,
     handoffPath,
+    artifactExists,
     domSummary,
     machinaSnapshot,
   };
+}
+
+async function fileExists(pathLike: string) {
+  try {
+    await access(pathLike);
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -150,3 +150,20 @@ After a run:
 - Add more Scheduling fixture states or route-intercepted scenario variants.
 - Add mobile and tablet viewport snapshot coverage.
 - Add visual regression baselines only after the UI stabilizes.
+
+## M23 follow-up
+
+M23 extends the workbench in these ways:
+
+- Scheduling fixture-state coverage now includes landing, provider setup, public booking, confirmation, cancelled/rescheduled, payment-required, and notification-summary demo surfaces.
+- Viewport coverage now includes desktop `1440x1024`, tablet `768x1024`, and phone `390x844`.
+- Snapshot tests now assert artifact file creation and page health in addition to route text and Machina node presence.
+
+The basic workflow is unchanged:
+
+```bash
+npm run build
+npm run test:e2e
+```
+
+See [docs/m23-scheduling-ui-polish-handoff.md](C:\Users\yuech\source\repos\Leviathan\docs\m23-scheduling-ui-polish-handoff.md) for the expanded route/state matrix and artifact folders.
