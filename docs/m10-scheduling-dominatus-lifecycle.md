@@ -115,7 +115,7 @@ Backend tests now prove:
 
 ## Known limitations
 
-- Cancellation, completion, no-show, and reschedule transitions are modeled but not exposed by endpoints yet.
+- Completion, no-show, and reschedule transitions remain modeled seams but are not exposed by endpoints. Cancellation is exposed by M11.
 - The workflow does not call payment, reminder, SMS, or external calendar actuators.
 - Lifecycle restore is currently for debug/audit summary, not for replacing Scheduling product JSON query paths.
 - Claim conflict rejection audit events remain product-audit-only unless a hold workflow already exists.
@@ -126,3 +126,7 @@ Backend tests now prove:
 - Scheduling cancellation/reschedule workflow.
 - Payment/deposit contract preparation without real providers.
 - Scheduling app packaging/demo polish.
+
+## M11 cancellation update
+
+M11 exposes the previously reserved `Cancelled` workflow state for confirmed bookings. `POST /api/apps/scheduling/bookings/{bookingId}/cancel` writes a cancellation audit event, updates the booking-local Dominatus checkpoint to `Cancelled`, and refreshes lifecycle audit correlation with the final cancellation audit event id. Reschedule remains documented as a deferred workflow rather than a dedicated Dominatus transition.

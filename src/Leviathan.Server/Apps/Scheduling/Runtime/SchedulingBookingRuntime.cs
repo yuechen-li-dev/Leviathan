@@ -32,6 +32,9 @@ public sealed class SchedulingBookingRuntime
     public async Task<SchedulingLifecycleSummary> Expired(Hold hold, string decision, string? lastAuditEventId, CancellationToken ct = default) =>
         await Save(ToCheckpoint(hold with { Status = "expired" }, SchedulingBookingStates.Expired, decision, lastAuditEventId), ct);
 
+    public async Task<SchedulingLifecycleSummary> Cancelled(Booking booking, string? lastAuditEventId, CancellationToken ct = default) =>
+        await Save(new SchedulingBookingCheckpoint(1, booking.ProviderId.Value, booking.ResourceId.Value, booking.ServiceId.Value, string.Empty, booking.Id.Value, string.Empty, booking.Range.StartsAtUtc, booking.Range.EndsAtUtc, booking.Range.TimeZoneId, booking.Status, SchedulingBookingStates.Cancelled, true, booking.CancellationPolicyResult ?? "accepted_confirmed_booking", lastAuditEventId, booking.CreatedAt, booking.UpdatedAt, booking.CancelledAt ?? booking.UpdatedAt), ct);
+
     public SchedulingLifecycleSummary? ReadByHold(ProviderId providerId, HoldId holdId)
     {
         var active = Path.Combine(HoldDir(providerId, "active", holdId), CheckpointFile);
