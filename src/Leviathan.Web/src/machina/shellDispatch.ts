@@ -33,17 +33,18 @@ export function reduceShellState(state: ShellState, event: LeviathanDispatch): S
       return {
         ...withTableEvent(withTableEvent(state, "route.rust-simulator"), "status.starting-session"),
         screen: null,
+        requestedSessionId: event.sessionId ?? null,
         error: null,
       };
     case "start-ariadne-session":
-      return { ...withTableEvent(state, "status.starting-session"), route: "rust-simulator", error: null };
+      return { ...withTableEvent(state, "status.starting-session"), route: "rust-simulator", requestedSessionId: null, error: null };
     case "apps-load-succeeded":
       return { ...withTableEvent(state, "status.idle"), apps: event.apps, error: null };
     case "api-failed":
       return { ...withTableEvent(state, "status.error"), error: event.error };
     case "ariadne-session-started":
     case "open-ariadne-session":
-      return { ...withTableEvent(state, "status.idle"), screen: event.screen, error: null };
+      return { ...withTableEvent(state, "status.idle"), screen: event.screen, requestedSessionId: null, error: null };
     case "ariadne-screen-updated":
       return {
         ...withTableEvent(state, "status.idle"),

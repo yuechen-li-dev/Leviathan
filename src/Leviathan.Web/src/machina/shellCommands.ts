@@ -7,6 +7,10 @@ export type ShellCommandDeps = { request: typeof api };
 const defaultDeps: ShellCommandDeps = { request: api };
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const LAST_RUST_SESSION_KEY = "leviathan.rustSimulator.lastSessionId";
+
+const rememberRustSession = (screen: AriadneScreenDto) => window.localStorage.setItem(LAST_RUST_SESSION_KEY, screen.sessionId);
+const forgetRustSession = () => window.localStorage.removeItem(LAST_RUST_SESSION_KEY);
 
 export function commandForEvent(event: LeviathanDispatch): boolean {
   return [
@@ -32,6 +36,13 @@ export async function runShellCommand(
       return;
     }
     if (event.type === "open-rust-simulator-app") {
+      const sessionId = event.sessionId ?? window.localStorage.getItem(LAST_RUST_SESSION_KEY);
+      if (sessionId) {
+        const screen = await deps.request<AriadneScreenDto>(`/ariadne/sessions/${sessionId}/screen`);
+        rememberRustSession(screen);
+        dispatch({ type: "open-ariadne-session", screen });
+        return;
+      }
       dispatch({ type: "start-ariadne-session", appId: "rust_simulator" });
       return;
     }
@@ -40,6 +51,7 @@ export async function runShellCommand(
         method: "POST",
         body: JSON.stringify({ appId: event.appId }),
       });
+      rememberRustSession(r.screen);
       dispatch({ type: "ariadne-session-started", screen: r.screen });
       return;
     }
@@ -50,6 +62,7 @@ export async function runShellCommand(
         method: "POST",
         body: JSON.stringify({ promptId: event.promptId, revision: event.revision }),
       });
+      rememberRustSession(screen);
       dispatch({ type: "ariadne-screen-updated", screen });
       return;
     }
@@ -58,6 +71,7 @@ export async function runShellCommand(
         method: "POST",
         body: JSON.stringify({ promptId: event.promptId, revision: event.revision, choiceKey: event.choiceKey }),
       });
+      rememberRustSession(screen);
       dispatch({ type: "ariadne-screen-updated", screen });
       return;
     }
@@ -66,9 +80,11 @@ export async function runShellCommand(
         method: "POST",
         body: JSON.stringify({ promptId: event.promptId, revision: event.revision, text: event.text }),
       });
+      rememberRustSession(screen);
       dispatch({ type: "ariadne-screen-updated", screen, clearTextInput: true });
     }
   } catch (e) {
+    if (event.type === "open-rust-simulator-app") forgetRustSession();
     dispatch({ type: "api-failed", error: errorText(e) });
   }
 }

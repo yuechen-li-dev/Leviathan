@@ -3,7 +3,7 @@ import type { ShellRoute } from "./shellState";
 
 export type LeviathanDispatch =
   | { type: "open-apps-list"; source?: "user" | "popstate" | "boot" }
-  | { type: "open-rust-simulator-app"; source?: "user" | "popstate" | "boot" }
+  | { type: "open-rust-simulator-app"; source?: "user" | "popstate" | "boot"; sessionId?: string }
   | { type: "start-ariadne-session"; appId: "rust_simulator" }
   | { type: "apps-load-succeeded"; apps: AppManifest[] }
   | { type: "api-failed"; error: string }

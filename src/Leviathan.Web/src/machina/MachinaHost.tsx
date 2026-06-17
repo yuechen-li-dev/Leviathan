@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resolveLayoutRows, type Rect } from "machinalayout";
 import { MachinaReactView } from "machinalayout/react";
-import { attachPopstateRouteAdapter, initialRouteFromLocation, mirrorRouteToHistory, replaceUnknownRoute } from "./browserHistoryAdapter";
+import { attachPopstateRouteAdapter, initialRouteFromLocation, mirrorRouteToHistory, replaceUnknownRoute, sessionIdFromPath } from "./browserHistoryAdapter";
 import { buildAppsLayout, buildRustSimulatorLayout } from "./layouts";
 import type { DispatchFn, LeviathanDispatch, ShellState } from "./types";
 import { commandForEvent, runShellCommand } from "./shellCommands";
@@ -63,7 +63,7 @@ export function MachinaHost() {
   useEffect(() => {
     dispatch(
       stateRef.current.route === "rust-simulator"
-        ? { type: "open-rust-simulator-app", source: "boot" }
+        ? { type: "open-rust-simulator-app", source: "boot", sessionId: sessionIdFromPath(window.location.pathname) ?? undefined }
         : { type: "open-apps-list", source: "boot" },
     );
   }, [dispatch]);

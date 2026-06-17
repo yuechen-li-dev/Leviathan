@@ -1,6 +1,7 @@
 using Dominatus.Core.Blackboard;
 using Dominatus.Core.Hfsm;
 using Dominatus.Core.Runtime;
+using Dominatus.Core.Persistence;
 
 namespace Leviathan.Server.Ariadne;
 
@@ -18,6 +19,11 @@ public sealed class AriadneSession
     private string? _error;
 
     public AriadneSession(string id, AdventureDefinition adventure)
+        : this(id, adventure, drain: true)
+    {
+    }
+
+    private AriadneSession(string id, AdventureDefinition adventure, bool drain)
     {
         Id = id;
         AppId = adventure.Id;
@@ -36,11 +42,39 @@ public sealed class AriadneSession
         _agent = new AiAgent(brain);
         _world.Add(_agent);
 
-        DrainUntilBlocked();
+        if (drain) DrainUntilBlocked();
     }
 
     public string Id { get; }
     public string AppId { get; }
+    public bool WasRestored { get; private set; }
+
+    public IReadOnlyList<SaveChunk> CreateCheckpointChunks()
+    {
+        lock (_gate)
+        {
+            var checkpoint = DominatusCheckpointBuilder.Capture(_world);
+            var ui = new AriadneUiCheckpoint(1, _revision, _bridge.Transcript.ToArray(), _bridge.NextPromptNumber, WasRestored);
+            return DominatusSave.CreateCheckpointChunks(checkpoint, extra: new AriadneUiChunkContributor(ui));
+        }
+    }
+
+    public static AriadneSession Restore(string id, AdventureDefinition adventure, IReadOnlyList<SaveChunk> chunks)
+    {
+        var uiContributor = new AriadneUiChunkContributor();
+        var (checkpoint, _) = DominatusSave.ReadCheckpointChunks(chunks, uiContributor);
+        var session = new AriadneSession(id, adventure, drain: false);
+        session.WasRestored = true;
+        DominatusCheckpointBuilder.Restore(session._world, checkpoint);
+        if (uiContributor.Read is { } ui)
+        {
+            session._revision = ui.Revision;
+            session._bridge.RestoreUi(ui.Transcript, ui.NextPromptNumber);
+        }
+        session.DrainUntilBlocked();
+        session.TrimDuplicateRestoredLine();
+        return session;
+    }
 
     public AriadneScreenDto Screen()
     {
@@ -115,6 +149,14 @@ public sealed class AriadneSession
         }
     }
 
+    private void TrimDuplicateRestoredLine()
+    {
+        if (_bridge.Pending?.Kind != "line" || _bridge.Transcript.Count < 2) return;
+        var last = _bridge.Transcript[^1];
+        var previous = _bridge.Transcript[^2];
+        if (last.Text == previous.Text && last.Speaker == previous.Speaker) _bridge.Transcript.RemoveAt(_bridge.Transcript.Count - 1);
+    }
+
     private AriadneScreenDto ToScreen() => new(
         SessionId: Id,
         AppId: AppId,
@@ -123,5 +165,6 @@ public sealed class AriadneSession
         IsComplete: _agent.Bb.GetOrDefault(AdventureComplete, false),
         Error: _error,
         Transcript: _bridge.Transcript.ToArray(),
-        Prompt: _bridge.Pending?.ToDto());
+        Prompt: _bridge.Pending?.ToDto(),
+        WasRestored: WasRestored);
 }

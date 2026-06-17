@@ -1,6 +1,7 @@
 using Leviathan.Server.Ariadne;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddSingleton<AriadneSessionPersistence>();
 builder.Services.AddSingleton<AriadneSessionManager>();
 builder.Services.AddCors(options =>
 {
@@ -19,6 +20,7 @@ app.MapPost("/api/ariadne/sessions", (CreateAriadneSessionRequest request, Ariad
     return Results.Ok(new CreateAriadneSessionResponse(session.Id, session.Screen()));
 });
 
+app.MapGet("/api/ariadne/sessions", (AriadneSessionManager manager) => Results.Ok(manager.Sessions));
 app.MapGet("/api/ariadne/sessions/{sessionId}/screen", GetScreen);
 
 app.MapPost("/api/ariadne/sessions/{sessionId}/advance", (string sessionId, AdvancePromptRequest request, AriadneSessionManager manager) =>
@@ -34,15 +36,19 @@ app.Run();
 
 static IResult GetScreen(string sessionId, AriadneSessionManager manager)
 {
-    return manager.TryGet(sessionId, out var session) && session is not null
-        ? Results.Ok(session.Screen())
-        : Results.NotFound(new { error = $"Unknown session '{sessionId}'." });
+    if (manager.TryGet(sessionId, out var session, out var error) && session is not null) return Results.Ok(session.Screen());
+    return error is null
+        ? Results.NotFound(new { error = $"Unknown session '{sessionId}'." })
+        : Results.Problem(error, statusCode: StatusCodes.Status500InternalServerError);
 }
 
 static IResult Submit(string sessionId, AriadneSessionManager manager, Func<AriadneSession, (bool Ok, string? Error, AriadneScreenDto? Screen)> submit)
 {
-    if (!manager.TryGet(sessionId, out var session) || session is null)
-        return Results.NotFound(new { error = $"Unknown session '{sessionId}'." });
+    if (!manager.TryGet(sessionId, out var session, out var error) || session is null)
+        return error is null
+            ? Results.NotFound(new { error = $"Unknown session '{sessionId}'." })
+            : Results.Problem(error, statusCode: StatusCodes.Status500InternalServerError);
     var result = submit(session);
+    if (result.Ok) manager.Save(session);
     return result.Ok ? Results.Ok(result.Screen) : Results.BadRequest(new { error = result.Error });
 }
