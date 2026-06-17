@@ -5,7 +5,6 @@ namespace Leviathan.Server.Ariadne;
 
 public sealed class AriadneSessionPersistence
 {
-    private const string AppDirectory = "rust_simulator";
     private const string CheckpointFile = "checkpoint.dom1";
     private readonly string _root;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -18,16 +17,16 @@ public sealed class AriadneSessionPersistence
 
     public string Root => _root;
 
-    public void Save(AriadneSession session)
+    public void Save(AriadneSession session, LeviathanAppManifest manifest)
     {
-        var dir = SessionDirectory(session.Id);
+        var dir = SessionDirectory(manifest.PersistenceScope, session.Id);
         Directory.CreateDirectory(dir);
         var checkpointPath = Path.Combine(dir, CheckpointFile);
         SaveFile.Write(checkpointPath, session.CreateCheckpointChunks());
         var now = DateTimeOffset.UtcNow;
         var manifestPath = Path.Combine(dir, "manifest.json");
         var existing = ReadManifestOrNull(manifestPath);
-        var manifest = new AriadneSessionManifest(
+        var sessionManifest = new AriadneSessionManifest(
             SessionId: session.Id,
             AppId: session.AppId,
             CreatedAt: existing?.CreatedAt ?? now,
@@ -35,20 +34,16 @@ public sealed class AriadneSessionPersistence
             IsComplete: session.Screen().IsComplete,
             PersistenceFormat: "dominatus-save/dom1",
             CurrentCheckpoint: CheckpointFile);
-        File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, JsonOptions));
+        File.WriteAllText(manifestPath, JsonSerializer.Serialize(sessionManifest, JsonOptions));
     }
 
-    public bool Exists(string sessionId) => File.Exists(CheckpointPath(sessionId));
+    public bool Exists(LeviathanAppManifest manifest, string sessionId) => File.Exists(CheckpointPath(manifest.PersistenceScope, sessionId));
 
-    public AriadneSession Restore(string sessionId, AdventureDefinition adventure)
-    {
-        var chunks = SaveFile.Read(CheckpointPath(sessionId));
-        return AriadneSession.Restore(sessionId, adventure, chunks);
-    }
+    public IReadOnlyList<SaveChunk> ReadCheckpoint(LeviathanAppManifest manifest, string sessionId) => SaveFile.Read(CheckpointPath(manifest.PersistenceScope, sessionId));
 
-    public IReadOnlyList<AriadneSessionListItemDto> ListSessions()
+    public IReadOnlyList<AriadneSessionListItemDto> ListSessions(LeviathanAppManifest manifest)
     {
-        var dir = Path.Combine(_root, "ariadne", AppDirectory, "sessions");
+        var dir = Path.Combine([_root, ..PathFromScope(manifest.PersistenceScope), "sessions"]);
         if (!Directory.Exists(dir)) return Array.Empty<AriadneSessionListItemDto>();
         return Directory.EnumerateDirectories(dir)
             .Select(ToListItemOrNull)
@@ -58,8 +53,9 @@ public sealed class AriadneSessionPersistence
             .ToArray();
     }
 
-    private string SessionDirectory(string sessionId) => Path.Combine(_root, "ariadne", AppDirectory, "sessions", sessionId);
-    private string CheckpointPath(string sessionId) => Path.Combine(SessionDirectory(sessionId), CheckpointFile);
+    private string SessionDirectory(string persistenceScope, string sessionId) => Path.Combine([_root, ..PathFromScope(persistenceScope), "sessions", sessionId]);
+    private string CheckpointPath(string persistenceScope, string sessionId) => Path.Combine(SessionDirectory(persistenceScope, sessionId), CheckpointFile);
+    private static string[] PathFromScope(string persistenceScope) => persistenceScope.Split(new[] {'/', '\\'}, StringSplitOptions.RemoveEmptyEntries);
 
     private AriadneSessionListItemDto? ToListItemOrNull(string sessionDirectory)
     {

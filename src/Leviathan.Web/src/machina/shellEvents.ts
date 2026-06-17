@@ -3,8 +3,9 @@ import type { ShellRoute } from "./shellState";
 
 export type LeviathanDispatch =
   | { type: "open-apps-list"; source?: "user" | "popstate" | "boot" }
+  | { type: "open-app"; appId: string; source?: "user" | "popstate" | "boot"; sessionId?: string }
   | { type: "open-rust-simulator-app"; source?: "user" | "popstate" | "boot"; sessionId?: string }
-  | { type: "start-ariadne-session"; appId: "rust_simulator" }
+  | { type: "start-ariadne-session"; appId: string }
   | { type: "apps-load-succeeded"; apps: AppManifest[] }
   | { type: "api-failed"; error: string }
   | { type: "ariadne-session-started"; screen: AriadneScreenDto }
@@ -26,7 +27,7 @@ export type LeviathanDispatch =
     };
 
 export type DispatchFn = (event: LeviathanDispatch) => void;
-export type RouteEvent = Extract<LeviathanDispatch, { type: "open-apps-list" | "open-rust-simulator-app" }>;
+export type RouteEvent = Extract<LeviathanDispatch, { type: "open-apps-list" | "open-app" | "open-rust-simulator-app" }>;
 
 export const eventForRoute = (route: ShellRoute, source: RouteEvent["source"] = "user"): RouteEvent =>
   route === "rust-simulator"

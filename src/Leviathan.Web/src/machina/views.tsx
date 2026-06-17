@@ -32,15 +32,15 @@ export function AppListView(props: SlotProps) {
       {data?.error && <p className="error">{data.error}</p>}
       {data?.status === "loading-apps" && <p>Loading apps…</p>}
       {data?.apps.map((app) => (
-        <article className="card" key={app.id}>
-          <h3>{app.title}</h3>
+        <article className="card" key={app.appId}>
+          <h3>{app.displayName}</h3>
           <p>{app.description}</p>
           <small>{app.capabilities.join(", ")}</small>
           <br />
           <button
-            onClick={() => dispatch?.({ type: "open-rust-simulator-app" })}
+            onClick={() => dispatch?.({ type: "open-app", appId: app.appId })}
           >
-            Open RustSimulator
+            Open {app.displayName}
           </button>
         </article>
       ))}
