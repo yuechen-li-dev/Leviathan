@@ -18,12 +18,14 @@ export type AriadneTranscriptLineDto = {
 };
 export type AriadneScreenDto = {
   sessionId: string;
+  appId?: string;
   title: string;
   revision: number;
   isComplete: boolean;
   error: string | null;
   transcript: AriadneTranscriptLineDto[];
   prompt: AriadnePromptDto | null;
+  wasRestored?: boolean;
 };
 
 export type { ShellRoute, ShellState, ShellStatus } from "./shellState";

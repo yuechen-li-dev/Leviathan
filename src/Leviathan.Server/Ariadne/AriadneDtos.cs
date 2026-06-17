@@ -21,7 +21,8 @@ public sealed record AriadneScreenDto(
     bool IsComplete,
     string? Error,
     IReadOnlyList<AriadneTranscriptLineDto> Transcript,
-    AriadnePromptDto? Prompt);
+    AriadnePromptDto? Prompt,
+    bool WasRestored = false);
 
 public sealed record AriadneTranscriptLineDto(string Id, string Text, string? Speaker);
 
