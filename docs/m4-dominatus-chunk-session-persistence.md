@@ -71,3 +71,8 @@ The debug inspector summary includes the current session id and `wasRestored` fl
 ## Recommended M5
 
 Add focused automated backend integration tests around restore-after-process-restart semantics, add a small debug screen listing local sessions, and evaluate replay-log use if Ariadne adds non-dialogue external actuations.
+
+
+## M5 follow-up
+
+M5 migrated Leviathan .NET projects to `net10.0`, upgraded Dominatus/Ariadne package references to the `0.3.0` line, kept Dominatus chunk persistence as the runtime truth, and added restart/restore-focused backend tests plus safer local session debug-list metadata. See `docs/m5-dotnet10-persistence-hardening.md`.

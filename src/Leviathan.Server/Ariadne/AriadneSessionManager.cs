@@ -26,7 +26,7 @@ public sealed class AriadneSessionManager(AriadneSessionPersistence persistence)
             Capabilities))
         .ToArray();
 
-    public IReadOnlyList<AriadneSessionManifest> Sessions => persistence.ListSessions();
+    public IReadOnlyList<AriadneSessionListItemDto> Sessions => persistence.ListSessions();
 
     public bool TryCreate(string appId, out AriadneSession? session)
     {

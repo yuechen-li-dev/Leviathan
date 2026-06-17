@@ -46,20 +46,36 @@ public sealed class AriadneSessionPersistence
         return AriadneSession.Restore(sessionId, adventure, chunks);
     }
 
-    public IReadOnlyList<AriadneSessionManifest> ListSessions()
+    public IReadOnlyList<AriadneSessionListItemDto> ListSessions()
     {
         var dir = Path.Combine(_root, "ariadne", AppDirectory, "sessions");
-        if (!Directory.Exists(dir)) return Array.Empty<AriadneSessionManifest>();
-        return Directory.EnumerateFiles(dir, "manifest.json", SearchOption.AllDirectories)
-            .Select(ReadManifestOrNull)
+        if (!Directory.Exists(dir)) return Array.Empty<AriadneSessionListItemDto>();
+        return Directory.EnumerateDirectories(dir)
+            .Select(ToListItemOrNull)
             .Where(static m => m is not null)
-            .Cast<AriadneSessionManifest>()
+            .Cast<AriadneSessionListItemDto>()
             .OrderByDescending(static m => m.UpdatedAt)
             .ToArray();
     }
 
     private string SessionDirectory(string sessionId) => Path.Combine(_root, "ariadne", AppDirectory, "sessions", sessionId);
     private string CheckpointPath(string sessionId) => Path.Combine(SessionDirectory(sessionId), CheckpointFile);
+
+    private AriadneSessionListItemDto? ToListItemOrNull(string sessionDirectory)
+    {
+        var manifestPath = Path.Combine(sessionDirectory, "manifest.json");
+        var checkpointPath = Path.Combine(sessionDirectory, CheckpointFile);
+        var manifest = ReadManifestOrNull(manifestPath);
+        if (manifest is null) return null;
+        return new AriadneSessionListItemDto(
+            manifest.SessionId,
+            manifest.AppId,
+            manifest.CreatedAt,
+            manifest.UpdatedAt,
+            manifest.IsComplete,
+            File.Exists(checkpointPath),
+            File.Exists(manifestPath));
+    }
 
     private static AriadneSessionManifest? ReadManifestOrNull(string path)
     {
@@ -76,6 +92,15 @@ public sealed record AriadneSessionManifest(
     bool IsComplete,
     string PersistenceFormat,
     string CurrentCheckpoint);
+
+public sealed record AriadneSessionListItemDto(
+    string SessionId,
+    string AppId,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    bool IsComplete,
+    bool HasCheckpoint,
+    bool HasManifest);
 
 internal sealed record AriadneUiCheckpoint(
     int Version,

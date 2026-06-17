@@ -52,3 +52,5 @@ static IResult Submit(string sessionId, AriadneSessionManager manager, Func<Aria
     if (result.Ok) manager.Save(session);
     return result.Ok ? Results.Ok(result.Screen) : Results.BadRequest(new { error = result.Error });
 }
+
+public partial class Program { }
