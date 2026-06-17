@@ -3,7 +3,7 @@ import { eventForRoute } from "./shellEvents";
 import type { ShellRoute, ShellState } from "./shellState";
 
 export const routeFromPath = (pathname: string): ShellRoute =>
-  pathname.startsWith("/apps/rust-simulator") ? "rust-simulator" : "apps";
+  pathname.startsWith("/apps/rust-simulator") ? "rust-simulator" : pathname.startsWith("/apps/scheduling") || pathname.startsWith("/book/") ? "scheduling" : "apps";
 
 export const sessionIdFromPath = (pathname: string): string | null => {
   const match = pathname.match(/^\/apps\/rust-simulator\/sessions\/([^/]+)$/);
@@ -15,7 +15,9 @@ export const pathForRoute = (route: ShellRoute, sessionId?: string | null): stri
     ? sessionId
       ? `/apps/rust-simulator/sessions/${encodeURIComponent(sessionId)}`
       : "/apps/rust-simulator"
-    : "/apps";
+    : route === "scheduling"
+      ? "/apps/scheduling"
+      : "/apps";
 
 export function initialRouteFromLocation(locationLike: Pick<Location, "pathname">): ShellRoute {
   return routeFromPath(locationLike.pathname);

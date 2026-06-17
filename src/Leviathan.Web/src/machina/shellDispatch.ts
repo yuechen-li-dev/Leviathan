@@ -4,9 +4,9 @@ import type { ShellState } from "./shellState";
 
 const routeTables = defineDispatchTables<ShellState>({
   set: {
-    events: ["route.apps", "route.rust-simulator"],
-    fields: ["route", "route"],
-    values: ["apps", "rust-simulator"],
+    events: ["route.apps", "route.rust-simulator", "route.scheduling"],
+    fields: ["route", "route", "route"],
+    values: ["apps", "rust-simulator", "scheduling"],
   },
 });
 
@@ -30,13 +30,15 @@ export function reduceShellState(state: ShellState, event: LeviathanDispatch): S
     case "open-apps-list":
       return { ...withTableEvent(withTableEvent(state, "route.apps"), "status.loading-apps"), error: null };
     case "open-app":
-    case "open-rust-simulator-app":
+      if (event.appId === "scheduling") return { ...withTableEvent(withTableEvent(state, "route.scheduling"), "status.idle"), screen: null, requestedSessionId: null, error: null };
       return {
         ...withTableEvent(withTableEvent(state, "route.rust-simulator"), "status.starting-session"),
         screen: null,
         requestedSessionId: event.sessionId ?? null,
         error: null,
       };
+    case "open-rust-simulator-app":
+      return { ...withTableEvent(withTableEvent(state, "route.rust-simulator"), "status.starting-session"), screen: null, requestedSessionId: event.sessionId ?? null, error: null };
     case "start-ariadne-session":
       return { ...withTableEvent(state, "status.starting-session"), route: "rust-simulator", requestedSessionId: null, error: null };
     case "apps-load-succeeded":

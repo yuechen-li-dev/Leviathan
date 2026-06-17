@@ -58,15 +58,16 @@ public sealed class RustSimulatorAppDefinition : ILeviathanSessionApp
         AriadneSession.Restore(sessionId, Adventure, chunks);
 }
 
-public sealed class LeviathanAppRegistry(IEnumerable<ILeviathanSessionApp> sessionApps)
+public sealed class LeviathanAppRegistry(IEnumerable<ILeviathanAppDefinition> apps, IEnumerable<ILeviathanSessionApp> sessionApps)
 {
+    private readonly IReadOnlyDictionary<string, ILeviathanAppDefinition> _apps = apps.ToDictionary(app => app.Manifest.AppId, StringComparer.Ordinal);
     private readonly IReadOnlyDictionary<string, ILeviathanSessionApp> _sessionApps = sessionApps.ToDictionary(app => app.Manifest.AppId, StringComparer.Ordinal);
 
-    public IReadOnlyList<LeviathanAppManifest> Apps => _sessionApps.Values.Select(app => app.Manifest).OrderBy(app => app.DisplayName).ToArray();
+    public IReadOnlyList<LeviathanAppManifest> Apps => _apps.Values.Select(app => app.Manifest).OrderBy(app => app.DisplayName).ToArray();
 
     public bool TryGetManifest(string appId, out LeviathanAppManifest? manifest)
     {
-        if (_sessionApps.TryGetValue(appId, out var app))
+        if (_apps.TryGetValue(appId, out var app))
         {
             manifest = app.Manifest;
             return true;

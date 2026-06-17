@@ -1,6 +1,6 @@
 import type { AppManifest, AriadneScreenDto } from "./types";
 
-export type ShellRoute = "apps" | "rust-simulator";
+export type ShellRoute = "apps" | "rust-simulator" | "scheduling";
 export type ShellStatus =
   | "idle"
   | "loading-apps"

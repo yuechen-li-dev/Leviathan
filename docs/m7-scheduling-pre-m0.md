@@ -496,3 +496,7 @@ This M7 milestone is documentation/specification only. Verification commands run
 - `dotnet test`
 
 The uploaded note path `/mnt/data/Claude on Calendly.txt` was checked but did not exist in the container. The report therefore used the critique bullets provided in the prompt as the source of Calendly pain points.
+
+## M8 follow-up note
+
+M8 implemented the first Scheduling skeleton as a modular local app under `src/Leviathan.Server/Apps/Scheduling` and `src/Leviathan.Web/src/apps/scheduling`. It registers `scheduling` through the app registry, exposes local file-backed provider/resource/service/availability/hold/booking APIs, and proves exclusive-resource atomic holds in a single server process. Dominatus lifecycle migration, real timezone expansion, auth, database persistence, external calendar sync, SMS, and payments remain deferred.

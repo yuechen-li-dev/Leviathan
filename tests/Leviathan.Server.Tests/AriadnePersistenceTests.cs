@@ -17,7 +17,8 @@ public sealed class AriadnePersistenceTests
         var client = fixture.CreateClient();
 
         var apps = await client.GetFromJsonAsync<LeviathanAppManifest[]>("/api/apps");
-        var manifest = Assert.Single(Assert.IsAssignableFrom<IEnumerable<LeviathanAppManifest>>(apps));
+        var manifest = Assert.Single(Assert.IsAssignableFrom<IEnumerable<LeviathanAppManifest>>(apps), a => a.AppId == "rust_simulator");
+        Assert.Contains(apps!, a => a.AppId == "scheduling");
         Assert.Equal("rust_simulator", manifest.AppId);
         Assert.Equal("Rust Simulator", manifest.DisplayName);
         Assert.Equal("ariadne/rust_simulator", manifest.PersistenceScope);

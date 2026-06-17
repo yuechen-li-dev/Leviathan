@@ -1,0 +1,2 @@
+export const schedulingRoutes = ["/apps/scheduling", "/apps/scheduling/setup", "/apps/scheduling/bookings", "/book/:providerSlug", "/book/:providerSlug/:serviceId/slots", "/book/:providerSlug/hold/:holdId", "/book/:providerSlug/confirmed/:bookingId"] as const;
+export const isSchedulingRoute = (path: string) => path === "/apps/scheduling" || path.startsWith("/apps/scheduling/") || path.startsWith("/book/");
