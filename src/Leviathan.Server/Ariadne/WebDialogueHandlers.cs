@@ -9,6 +9,15 @@ internal sealed class WebDialogueBridge
 
     public List<AriadneTranscriptLineDto> Transcript { get; } = new();
     public PendingPrompt? Pending { get; private set; }
+    public long NextPromptNumber => _nextPromptId;
+
+    public void RestoreUi(IReadOnlyList<AriadneTranscriptLineDto> transcript, long nextPromptNumber)
+    {
+        Transcript.Clear();
+        Transcript.AddRange(transcript);
+        _nextPromptId = Math.Max(1, nextPromptNumber);
+        Pending = null;
+    }
 
     public ActuatorHost.HandlerResult ShowLine(ActuatorHost host, AiCtx ctx, ActuationId id, DiagLineCommand cmd)
     {

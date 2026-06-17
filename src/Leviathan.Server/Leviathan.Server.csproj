@@ -1,18 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dominatus.Core" Version="0.2.1" />
-    <PackageReference Include="Dominatus.OptFlow" Version="0.2.1" />
-    <PackageReference Include="Ariadne.OptFlow" Version="0.2.1" />
+    <PackageReference Include="Dominatus.Core" Version="0.3.0" />
+    <PackageReference Include="Dominatus.OptFlow" Version="0.3.0" />
+    <PackageReference Include="Ariadne.OptFlow" Version="0.3.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- TODO(M1b): Replace this temporary linked source when RustSimulator is published in a host-neutral Ariadne package. NuGet has Dominatus.Core/Dominatus.OptFlow/Ariadne.OptFlow 0.2.1, but no Ariadne.Console or Ariadne.ConsoleApp package. -->
+    <!-- TODO(M1b): Replace this temporary linked source when RustSimulator is published in a host-neutral Ariadne package. NuGet has Dominatus.Core/Dominatus.OptFlow/Ariadne.OptFlow 0.3.0, but no Ariadne.Console or Ariadne.ConsoleApp package. -->
     <Compile Include="../../vendor/Dominatus/src/Ariadne.Console/Scripts/RustSimulator.cs" Link="Ariadne/VendoredReference/RustSimulator.cs" />
   </ItemGroup>
 </Project>

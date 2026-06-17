@@ -15,6 +15,7 @@ export type ShellState = {
   status: ShellStatus;
   error: string | null;
   textInput: string;
+  requestedSessionId: string | null;
 };
 
 export const createInitialShellState = (route: ShellRoute = "apps"): ShellState => ({
@@ -24,4 +25,5 @@ export const createInitialShellState = (route: ShellRoute = "apps"): ShellState 
   status: "idle",
   error: null,
   textInput: "",
+  requestedSessionId: null,
 });
