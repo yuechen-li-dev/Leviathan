@@ -256,3 +256,8 @@ Commands run during the survey:
 - `dotnet restore` — passed.
 - `dotnet build Leviathan.slnx` — passed with pre-existing xUnit analyzer warnings about cancellation tokens in persistence tests.
 - `dotnet test` — passed; 6 tests passed.
+
+
+## M20 Scheduling payment actuator seam
+
+M20 intentionally does not call payment actuators. It documents the future seam where authorized Leviathan payment commands can map to Dominatus payment actuator operations such as checkout/payment-intent creation, capture, status, and refund.

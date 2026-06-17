@@ -164,3 +164,8 @@ M17 introduces object storage commands that carry optional account/app-installat
 ## M18 update: actuation capability seam
 
 Object-storage actuation now uses the M15 capability policy in policy-enforced mode. The actuation handler resolves account/app-installation/request context, evaluates object capabilities through `ILeviathanCapabilityPolicy`, writes the existing capability audit envelope via the capability store, and mirrors the decision metadata on object operation events. Dominatus host actuation policies remain available for coarse synchronous gates; Leviathan continues to own grants and authorization decisions.
+
+
+## M20 payment capability note
+
+Scheduling now declares future `payment.checkout` and `payment.refund` capability needs. M20 does not perform external payment actuation; payment provider authority remains platform-owned and future real checkout/refund commands must be capability-gated before reaching Dominatus actuators.

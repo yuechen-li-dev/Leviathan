@@ -30,11 +30,16 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
             if (bookings.Any(b => b.Status == "confirmed" && Overlaps(b.Range, range))) { await store.AppendAudit(Audit(providerId, resourceId, null, null, "hold_rejected", "Hold rejected due to confirmed booking conflict.", range, "rejected", "booking"), ct); return (null, "slot_conflict"); }
             var holds = await store.GetActiveHolds(providerId, resourceId, DateTimeOffset.UtcNow, ct);
             if (holds.Any(h => Overlaps(h.Range, range))) { await store.AppendAudit(Audit(providerId, resourceId, null, null, "hold_rejected", "Hold rejected due to active hold conflict.", range, "rejected", "hold"), ct); return (null, "slot_conflict"); }
-            var hold = new Hold(HoldId.New(), providerId, serviceId, resourceId, range, Token(), null, "active", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10), null);
+            var service = await store.GetService(serviceId, ct);
+            var paymentPolicy = service?.PaymentPolicy;
+            var paymentRequired = paymentPolicy?.RequiresPaymentBeforeConfirmation == true;
+            var hold = new Hold(HoldId.New(), providerId, serviceId, resourceId, range, Token(), null, "active", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10), null, PaymentRequirementStatus: paymentRequired ? PaymentRequirementStatuses.Required : PaymentRequirementStatuses.NotRequired, PaymentPolicySnapshot: paymentPolicy, PaymentRequiredAt: paymentRequired ? DateTimeOffset.UtcNow : null);
             await store.SaveHold(hold, ct);
             var summary = await lifecycle.HoldCreated(hold, null, ct);
             var audit = Audit(providerId, resourceId, null, hold.Id, "hold_created", "Temporary hold created for exclusive resource.", range, "accepted", lifecycleSummary: summary);
             await store.AppendAudit(audit, ct);
+            if (paymentPolicy is not null) await store.AppendAudit(Audit(providerId, resourceId, null, hold.Id, "payment_policy_snapshot_recorded", "Payment policy snapshot recorded on hold.", range, "accepted", extra: PaymentAuditData(hold)), ct);
+            if (paymentRequired) await store.AppendAudit(Audit(providerId, resourceId, null, hold.Id, "payment_required", "Payment is required before confirmation.", range, "accepted", extra: PaymentAuditData(hold)), ct);
             await lifecycle.HoldCreated(hold, audit.EventId, ct);
             return (hold, null);
         }
@@ -82,12 +87,17 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
                 await store.AppendAudit(rejected, ct);
                 return (null, "slot_conflict", rejected.EventId);
             }
-            var hold = new Hold(HoldId.New(), old.ProviderId, serviceId, resourceId, range, Token(), null, "active", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10), null, old.Id, reasonCode, message, safeActor);
+            var service = await store.GetService(serviceId, ct);
+            var paymentPolicy = service?.PaymentPolicy;
+            var paymentRequired = paymentPolicy?.RequiresPaymentBeforeConfirmation == true;
+            var hold = new Hold(HoldId.New(), old.ProviderId, serviceId, resourceId, range, Token(), null, "active", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10), null, old.Id, reasonCode, message, safeActor, paymentRequired ? PaymentRequirementStatuses.Required : PaymentRequirementStatuses.NotRequired, paymentPolicy, null, paymentRequired ? DateTimeOffset.UtcNow : null);
             await store.SaveHold(hold, ct);
             var summary = await lifecycle.HoldCreated(hold, null, ct);
             details = RescheduleDetails(old, hold, null, range, resourceId, safeActor, reasonCode, message);
             var audit = Audit(old.ProviderId, resourceId, old.Id, hold.Id, "booking_reschedule_hold_created", "Replacement hold created; original booking remains confirmed.", range, "accepted", lifecycleSummary: summary, actor: safeActor, extra: details);
             await store.AppendAudit(audit, ct);
+            if (paymentPolicy is not null) await store.AppendAudit(Audit(old.ProviderId, resourceId, old.Id, hold.Id, "payment_policy_snapshot_recorded", "Payment policy snapshot recorded on replacement hold; payment transfer remains deferred.", range, "accepted", actor: safeActor, extra: PaymentAuditData(hold)), ct);
+            if (paymentRequired) await store.AppendAudit(Audit(old.ProviderId, resourceId, old.Id, hold.Id, "payment_required", "Payment is required before replacement confirmation; carry-forward is deferred.", range, "accepted", actor: safeActor, extra: PaymentAuditData(hold)), ct);
             await lifecycle.HoldCreated(hold, audit.EventId, ct);
             return (hold, null, audit.EventId);
         }
@@ -120,15 +130,17 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
             if (hold.ExpiresAt <= DateTimeOffset.UtcNow) { await store.ExpireHold(hold, ct); var expiredConfirmSummary = await lifecycle.Expired(hold, "rejected", null, ct); var expiredConfirmAudit = Audit(hold.ProviderId, hold.ResourceId, null, hold.Id, "hold_expired", "Hold expired before confirmation.", hold.Range, "rejected", lifecycleSummary: expiredConfirmSummary); await store.AppendAudit(expiredConfirmAudit, ct); await lifecycle.Expired(hold, "rejected", expiredConfirmAudit.EventId, ct); return (null, "hold_expired"); }
             var customer = contact ?? hold.CustomerDraft;
             if (customer is null) return (null, "intake_required");
+            if (hold.PaymentRequirementStatus == PaymentRequirementStatuses.Required) { await store.AppendAudit(Audit(hold.ProviderId, hold.ResourceId, null, hold.Id, "payment_missing_confirmation_rejected", "Confirmation rejected because required fake/local payment has not been satisfied.", hold.Range, "rejected", extra: PaymentAuditData(hold)), ct); return (null, "payment_required"); }
             await ExpireStale(hold.ProviderId, hold.ResourceId, ct);
             var oldBooking = hold.ReplacementForBookingId is null ? null : await store.GetBooking(hold.ReplacementForBookingId, ct);
             if (hold.ReplacementForBookingId is not null && (oldBooking is null || oldBooking.Status != "confirmed")) { await store.AppendAudit(Audit(hold.ProviderId, hold.ResourceId, oldBooking?.Id, hold.Id, "booking_reschedule_failed", "Replacement confirmation failed because the original booking is no longer confirmed.", hold.Range, "rejected", "original_not_confirmed", actor: hold.RescheduleActor ?? "local-dev"), ct); return (null, "booking_not_reschedulable"); }
             var bookings = await store.GetBookings(hold.ProviderId, hold.ResourceId, ct);
             if (bookings.Any(b => b.Status == "confirmed" && b.Id != hold.ReplacementForBookingId && Overlaps(b.Range, hold.Range))) { await store.AppendAudit(Audit(hold.ProviderId, hold.ResourceId, null, hold.Id, hold.ReplacementForBookingId is null ? "booking_rejected" : "booking_reschedule_failed", "Booking rejected due to confirmed booking conflict.", hold.Range, "rejected", "booking"), ct); return (null, "slot_conflict"); }
-            var booking = new Booking(BookingId.New(), hold.ProviderId, hold.ServiceId, hold.ResourceId, customer, hold.Range, "confirmed", "m8-local-policy-hold-ttl-10m", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, RescheduledFromBookingId: hold.ReplacementForBookingId, ReplacementHoldId: hold.ReplacementForBookingId is null ? null : hold.Id);
+            var booking = new Booking(BookingId.New(), hold.ProviderId, hold.ServiceId, hold.ResourceId, customer, hold.Range, "confirmed", "m20-local-policy-payment-snapshot", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, RescheduledFromBookingId: hold.ReplacementForBookingId, ReplacementHoldId: hold.ReplacementForBookingId is null ? null : hold.Id, PaymentRequirementStatus: hold.PaymentRequirementStatus, PaymentPolicySnapshot: hold.PaymentPolicySnapshot, PaymentReference: hold.PaymentReference, PaymentRequiredAt: hold.PaymentRequiredAt, PaymentSatisfiedAt: hold.PaymentSatisfiedAt);
             await store.SaveBooking(booking, ct);
             await store.ExpireHold(hold with { Status = "confirmed" }, ct);
             var summary = await lifecycle.Confirmed(hold, booking, null, ct);
+            if (booking.PaymentPolicySnapshot is not null) await store.AppendAudit(Audit(hold.ProviderId, hold.ResourceId, booking.Id, hold.Id, "payment_policy_applied", "Payment policy snapshot applied to confirmed booking.", hold.Range, "accepted", lifecycleSummary: summary, extra: PaymentAuditData(hold)), ct);
             var audit = Audit(hold.ProviderId, hold.ResourceId, booking.Id, hold.Id, "booking_confirmed", "Hold confirmed into booking.", hold.Range, "accepted", lifecycleSummary: summary);
             await store.AppendAudit(audit, ct);
             await lifecycle.Confirmed(hold, booking, audit.EventId, ct);
@@ -148,6 +160,19 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
             return (booking, null);
         }
         finally { foreach (var gateToRelease in gates.Reverse()) gateToRelease.Release(); }
+    }
+
+    public async Task<(Hold? Hold, string? Error, string? AuditEventId)> MarkFakePaymentSatisfied(HoldId holdId, string token, string? actor, CancellationToken ct = default)
+    {
+        var hold = await store.GetHold(holdId, ct);
+        if (hold is null || hold.ClaimToken != token) return (null, "hold_not_found", null);
+        if (hold.ExpiresAt <= DateTimeOffset.UtcNow) return (null, "hold_expired", null);
+        if (hold.PaymentPolicySnapshot?.PaymentProviderMode != SchedulingPaymentProviderModes.FakeLocal) return (null, "payment_not_supported", null);
+        var updated = hold with { PaymentRequirementStatus = PaymentRequirementStatuses.Satisfied, PaymentReference = $"fakepay_{Guid.NewGuid():N}", PaymentSatisfiedAt = DateTimeOffset.UtcNow };
+        await store.SaveHold(updated, ct);
+        var audit = Audit(updated.ProviderId, updated.ResourceId, null, updated.Id, "payment_satisfied_fake", "Fake/local payment marked satisfied for development and tests only.", updated.Range, "accepted", actor: string.IsNullOrWhiteSpace(actor) ? "local-dev" : actor.Trim(), extra: PaymentAuditData(updated));
+        await store.AppendAudit(audit, ct);
+        return (updated, null, audit.EventId);
     }
 
     public async Task<(Booking? Booking, string? Error, string? AuditEventId, SchedulingLifecycleSummary? Lifecycle)> Cancel(BookingId bookingId, string reason, string? message, string? actor, CancellationToken ct = default)
@@ -194,6 +219,17 @@ public sealed class BookingClaimService(SchedulingStore store, ResourceLockRegis
         }
         finally { gate.Release(); }
     }
+
+    private static IReadOnlyDictionary<string, string> PaymentAuditData(Hold hold) => new Dictionary<string, string>
+    {
+        ["paymentRequirementStatus"] = hold.PaymentRequirementStatus,
+        ["paymentProviderMode"] = hold.PaymentPolicySnapshot?.PaymentProviderMode ?? SchedulingPaymentProviderModes.None,
+        ["paymentTiming"] = hold.PaymentPolicySnapshot?.PaymentTiming ?? SchedulingPaymentTimings.None,
+        ["currency"] = hold.PaymentPolicySnapshot?.Currency ?? "",
+        ["requiresDeposit"] = (hold.PaymentPolicySnapshot?.RequiresDeposit == true).ToString(),
+        ["requiresPrepay"] = (hold.PaymentPolicySnapshot?.RequiresPrepay == true).ToString(),
+        ["paymentReference"] = hold.PaymentReference ?? ""
+    };
 
     private async Task ExpireStale(ProviderId providerId, ResourceId resourceId, CancellationToken ct)
     {

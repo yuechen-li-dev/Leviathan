@@ -449,6 +449,47 @@ public sealed class SchedulingM8Tests
         Assert.Equal("prov_public_m15", publicFetch!.Id.Value);
     }
 
+    [Fact]
+    public async Task M20_payment_required_hold_rejects_confirmation_until_fake_local_satisfied()
+    {
+        using var fixture = new LeviathanFactory();
+        var client = fixture.CreateClient();
+        var provider = (await (await client.PostAsJsonAsync("/api/apps/scheduling/providers", new CreateProviderRequest("m20-pay", "M20 Pay", "UTC", null, null))).Content.ReadFromJsonAsync<Provider>())!;
+        var resource = (await (await client.PostAsJsonAsync("/api/apps/scheduling/resources", new CreateResourceRequest(provider.Id.Value, "Room A", "room", "UTC"))).Content.ReadFromJsonAsync<BookableResource>())!;
+        var policy = new SchedulingPaymentPolicy(true, false, new MoneyAmount(2500, "USD"), null, "USD", SchedulingPaymentTimings.BeforeConfirmation, SchedulingPaymentProviderModes.FakeLocal, SchedulingCancellationPaymentPolicies.RefundDeferred, SchedulingReschedulePaymentPolicies.CarryPaymentForwardDeferred);
+        var service = (await (await client.PostAsJsonAsync("/api/apps/scheduling/services", new CreateServiceRequest(provider.Id.Value, "Deposit Consult", null, 30, PaymentPolicy: policy))).Content.ReadFromJsonAsync<SchedulingService>())!;
+        Assert.Equal(2500, service.PaymentPolicy!.DepositAmount!.MinorUnits);
+        Assert.Equal("USD", service.PaymentPolicy.Currency);
+        await client.PostAsJsonAsync($"/api/apps/scheduling/services/{service.Id.Value}/resources", new AssignResourceRequest(provider.Id.Value, resource.Id.Value));
+
+        var hold = await Hold(client, provider.Id.Value, service.Id.Value, resource.Id.Value, DateTimeOffset.Parse("2030-01-07T09:00:00Z"), DateTimeOffset.Parse("2030-01-07T09:30:00Z"));
+        Assert.Equal(PaymentRequirementStatuses.Required, hold.PaymentRequirementStatus);
+        Assert.Equal(2500, hold.PaymentPolicySnapshot!.DepositAmount!.MinorUnits);
+
+        (await client.PostAsJsonAsync($"/api/apps/scheduling/holds/{hold.HoldId}/intake", new SubmitIntakeRequest(hold.ClaimToken, "Ada", "ada@example.test", null, null))).EnsureSuccessStatusCode();
+        var rejected = await client.PostAsJsonAsync("/api/apps/scheduling/bookings/confirm", new ConfirmBookingRequest(hold.HoldId, hold.ClaimToken, null));
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        Assert.Equal("payment_required", (await rejected.Content.ReadFromJsonAsync<SchedulingError>())!.Error);
+
+        var satisfy = await client.PostAsJsonAsync($"/api/apps/scheduling/holds/{hold.HoldId}/payment/fake-satisfy", new FakeSatisfyPaymentRequest(hold.ClaimToken, "test"));
+        satisfy.EnsureSuccessStatusCode();
+        var fake = (await satisfy.Content.ReadFromJsonAsync<FakeSatisfyPaymentResponse>())!;
+        Assert.Equal(PaymentRequirementStatuses.Satisfied, fake.PaymentRequirementStatus);
+        Assert.StartsWith("fakepay_", fake.PaymentReference);
+
+        var confirmed = await client.PostAsJsonAsync("/api/apps/scheduling/bookings/confirm", new ConfirmBookingRequest(hold.HoldId, hold.ClaimToken, null));
+        confirmed.EnsureSuccessStatusCode();
+        var booking = (await confirmed.Content.ReadFromJsonAsync<Booking>())!;
+        Assert.Equal(PaymentRequirementStatuses.Satisfied, booking.PaymentRequirementStatus);
+        Assert.Equal(fake.PaymentReference, booking.PaymentReference);
+
+        var audit = await client.GetFromJsonAsync<BookingAuditEvent[]>($"/api/apps/scheduling/bookings/{booking.Id.Value}/audit?providerId={provider.Id.Value}");
+        Assert.Contains(audit!, e => e.EventType == "payment_policy_applied");
+        Assert.Contains(audit!, e => e.EventType == "booking_confirmed");
+        var lifecycle = await client.GetFromJsonAsync<SchedulingLifecycleSummary>($"/api/apps/scheduling/bookings/{booking.Id.Value}/lifecycle");
+        Assert.Equal(PaymentRequirementStatuses.Satisfied, lifecycle!.PaymentRequirementStatus);
+    }
+
     private static async Task<(string ProviderId, string ServiceId, string ResourceId, string? SecondResourceId)> CreateSetup(HttpClient client, string slug, bool twoResources, string timeZone = "UTC")
     {
         var provider = (await (await client.PostAsJsonAsync("/api/apps/scheduling/providers", new CreateProviderRequest(slug, "M8 Demo", timeZone, null, null))).Content.ReadFromJsonAsync<Provider>())!;

@@ -21,4 +21,6 @@ public static class SchedulingBookingKeys
     public static readonly BbKey<string> CreatedAt = new("Scheduling.Booking.CreatedAt");
     public static readonly BbKey<string> UpdatedAt = new("Scheduling.Booking.UpdatedAt");
     public static readonly BbKey<string> ExpiresAt = new("Scheduling.Booking.ExpiresAt");
+    public static readonly BbKey<string> PaymentRequirementStatus = new("Scheduling.Booking.PaymentRequirementStatus");
+    public static readonly BbKey<string> PaymentReference = new("Scheduling.Booking.PaymentReference");
 }
