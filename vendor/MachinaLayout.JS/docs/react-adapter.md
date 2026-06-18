@@ -90,3 +90,26 @@ Not used as geometry authority:
 - CSS classes determining solved geometry
 
 React components render payload UI inside adapter-owned rectangles; React does not own outer layout geometry.
+
+## Inspection handoff surface
+
+React DOM rendering includes the standard Machina `data-machina-*` debug attributes used by the framework-light DOM summary helpers. See [Inspection and handoff bundles](inspection-and-handoff.md) for the `machinalayout/inspect` and `machinalayout/handoff` workflow.
+
+## Debug overlay
+
+`MachinaReactView` accepts an optional controlled `debugOverlay` prop:
+
+```tsx
+<MachinaReactView
+  layout={layout}
+  debugOverlay={{ mode: "nonInteractiveOverlay", labels: true, borders: true }}
+/>
+```
+
+Modes:
+
+- `collapsed`: no overlay labels or borders are rendered and app interactions are not blocked.
+- `nonInteractiveOverlay`: overlay labels and borders render when enabled, do not consume layout space, and use `pointer-events: none`, making the mode suitable for screenshots and browser automation.
+- `interactivePanel`: overlay labels/borders can render with a small panel and `pointer-events: auto` for human inspection.
+
+The prop is controlled. M26 does not add React state management or hooks; DeusMachina provides the standalone behavior helpers used to derive the rendering semantics. In `nonInteractiveOverlay`, overlay artifacts use `pointer-events: none` and do not consume layout space; in `collapsed`, overlay artifacts are not rendered. Labels and borders remain controlled booleans and do not change existing `data-machina-*` attributes on node wrappers.

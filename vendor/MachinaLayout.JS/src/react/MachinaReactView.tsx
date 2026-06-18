@@ -1,5 +1,6 @@
 import React from "react";
 
+import { getMachinaDebugOverlayBehavior, type MachinaDebugOverlayMode } from "../deus";
 import { toResolvedTree } from "../toResolvedTree";
 import type {
   NodeId,
@@ -23,6 +24,13 @@ export type MachinaRenderLayer = {
   z: number;
 };
 
+export type MachinaReactDebugOverlayOptions = {
+  mode?: MachinaDebugOverlayMode;
+  labels?: boolean;
+  borders?: boolean;
+  selectedNodeId?: string;
+};
+
 export type MachinaReactViewProps = {
   layout: ResolvedLayoutDocument;
   views?: Record<string, React.ComponentType<MachinaSlotProps>>;
@@ -37,6 +45,7 @@ export type MachinaReactViewProps = {
   nodeContainIntrinsicSize?: string;
   layers?: Record<string, MachinaRenderLayer>;
   defaultLayer?: string;
+  debugOverlay?: MachinaReactDebugOverlayOptions;
 };
 
 function normalizeLayerZ(value: number | undefined): number {
@@ -163,6 +172,89 @@ function renderNode(
   );
 }
 
+function collectOverlayNodes(node: ResolvedLayoutTree): ResolvedLayoutTree[] {
+  return [node, ...node.children.flatMap((child) => collectOverlayNodes(child))];
+}
+
+function renderDebugOverlay(
+  tree: ResolvedLayoutTree,
+  options: MachinaReactDebugOverlayOptions,
+): React.ReactElement | null {
+  const board = {
+    mode: options.mode ?? "collapsed",
+    labels: options.labels ?? true,
+    borders: options.borders ?? true,
+    selectedNodeId: options.selectedNodeId,
+  };
+  const behavior = getMachinaDebugOverlayBehavior(board);
+  if (!behavior.visible) return null;
+
+  const nodes = collectOverlayNodes(tree);
+  return (
+    <div
+      data-testid="machina-debug-overlay"
+      data-machina-debug-overlay-mode={board.mode}
+      style={{
+        position: "absolute",
+        inset: 0,
+        pointerEvents: behavior.pointerEvents,
+        zIndex: 10000,
+        boxSizing: "border-box",
+      }}
+    >
+      {nodes.map((node) => (
+        <div
+          key={node.id}
+          data-testid={`machina-debug-overlay-node-${node.id}`}
+          data-machina-debug-overlay-node-id={node.id}
+          style={{
+            position: "absolute",
+            left: node.rect.x - tree.rect.x,
+            top: node.rect.y - tree.rect.y,
+            width: node.rect.width,
+            height: node.rect.height,
+            boxSizing: "border-box",
+            border: behavior.showBorders ? "1px solid rgba(14, 165, 233, 0.9)" : "0",
+            pointerEvents: behavior.pointerEvents,
+          }}
+        >
+          {behavior.showLabels ? (
+            <span
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                fontSize: 10,
+                lineHeight: "12px",
+                background: "rgba(14, 165, 233, 0.9)",
+                color: "white",
+                padding: "0 3px",
+              }}
+            >
+              {node.debugLabel ?? node.id}
+            </span>
+          ) : null}
+        </div>
+      ))}
+      {behavior.showPanel ? (
+        <div
+          data-testid="machina-debug-overlay-panel"
+          style={{
+            position: "absolute",
+            right: 8,
+            top: 8,
+            background: "rgba(15, 23, 42, 0.92)",
+            color: "white",
+            padding: 8,
+          }}
+        >
+          Debug overlay{board.selectedNodeId ? `: ${board.selectedNodeId}` : ""}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function MachinaReactView(props: MachinaReactViewProps): React.JSX.Element {
   const {
     layout,
@@ -178,6 +270,7 @@ export function MachinaReactView(props: MachinaReactViewProps): React.JSX.Elemen
     nodeContainIntrinsicSize,
     layers = { base: { z: 0 } },
     defaultLayer = "base",
+    debugOverlay,
   } = props;
   const tree = toResolvedTree(layout);
 
@@ -205,6 +298,7 @@ export function MachinaReactView(props: MachinaReactViewProps): React.JSX.Elemen
         layers,
         defaultLayer,
       )}
+      {debugOverlay ? renderDebugOverlay(tree, debugOverlay) : null}
     </div>
   );
 }

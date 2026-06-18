@@ -25,6 +25,8 @@ export type MachinaLayoutErrorCode =
   | "StackChildMustBeFixed"
   | "StackContentNegative"
   | "StackOverflow"
+  | "ExpectedStackArrange"
+  | "StackQueryInvalidRange"
   | "CellFrameWithoutGrid"
   | "GridChildMustBeCell"
   | "InvalidGridTrack"
@@ -40,7 +42,13 @@ export type MachinaLayoutErrorCode =
   | "GuideInvalidEdgeForAxis"
   | "GuideTooManyReferencesPerAxis"
   | "InvalidGuideFrame"
-  | "GuideTargetUnresolved";
+  | "GuideTargetUnresolved"
+  | "InvalidViewport"
+  | "DuplicateViewportKey"
+  | "UnknownViewportKey"
+  | "InvalidScreen"
+  | "DuplicateScreenKey"
+  | "UnknownScreenKey";
 
 export class MachinaLayoutError extends Error {
   readonly code: MachinaLayoutErrorCode;

@@ -47,6 +47,8 @@ This document summarizes public layout and text diagnostic codes.
   - Note: this code name is historical and stable; do not rename it.
 - `StackContentNegative` — stack content space became negative. Typical cause: padding/gaps exceed container space.
 - `StackOverflow` — stack children exceed available axis space. Typical cause: fixed sizes + gaps exceed container.
+- `ExpectedStackArrange` — a stack query helper was called on a non-stack node. Typical cause: using stack-only geometry helpers with a plain or grid parent.
+- `StackQueryInvalidRange` — a remaining stack rectangle query produced a negative interval. Typical cause: `afterChildren` resolve after `beforeChildren`.
 
 ### Grid
 
@@ -65,6 +67,15 @@ This document summarizes public layout and text diagnostic codes.
 - `GuideTooManyReferencesPerAxis` — too many references were provided for one axis. Typical cause: overconstrained guide input.
 - `InvalidGuideFrame` — guide frame declaration is malformed. Typical cause: incomplete or conflicting guide spec.
 - `GuideTargetUnresolved` — guide target exists but was not resolved when needed. Typical cause: invalid dependency order/cycle.
+
+### Screen catalog and viewport matrix
+
+- `InvalidViewport` — viewport metadata is malformed. Typical cause: blank key, non-positive dimensions, invalid `deviceScaleFactor`, or invalid lightweight metadata.
+- `DuplicateViewportKey` — two viewport presets share one key. Typical cause: duplicate matrix entries.
+- `UnknownViewportKey` — a requested or screen-referenced viewport key is absent from the matrix. Typical cause: typo or filtered matrix mismatch.
+- `InvalidScreen` — screen catalog metadata is malformed. Typical cause: blank key, blank route, or invalid lightweight metadata.
+- `DuplicateScreenKey` — two screen definitions share one key. Typical cause: duplicate catalog entries.
+- `UnknownScreenKey` — a requested screen key is absent from the catalog. Typical cause: typo in an expansion filter.
 
 ### Variants
 
