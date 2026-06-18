@@ -349,3 +349,15 @@ await captureMachinaArtifacts({
 3. Should viewport matrix helpers belong to Machina core docs, adapter docs, or a separate testing companion package?
 4. Should overlay and inspector behavior be purely adapter-level, or exposed through a shared debug contract?
 5. Should screen catalog metadata be route-framework-agnostic, or can it assume browser route strings as a first-class case?
+
+## 0.3.0 Follow-Up
+
+Leviathan M25 inventories the vendored MachinaLayout.JS 0.3.0 surface and maps these requests against the published upstream helpers and docs:
+
+- `docs/m25-machina-0_3-inventory-adoption-plan.md`
+
+High-level result:
+
+- remaining-rect stack helpers are now present upstream;
+- screen catalog, viewport matrix, DOM summary, handoff schema, and non-intercepting overlay behavior are now at least partially addressed upstream;
+- Leviathan still owns the Playwright runner glue, route/query conventions, and current docked debug inspector behavior.
