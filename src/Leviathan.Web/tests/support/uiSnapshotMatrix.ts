@@ -33,9 +33,9 @@ const taskTextOverrides: Record<string, string> = {
   "scheduling-landing__desktop": "Action cards",
   "scheduling-landing__tablet": "Current proof points",
   "scheduling-landing__phone": "Unsafe local-dev ownership context",
-  "public-booking__desktop": "30 minute consult",
-  "public-booking__tablet": "Mon Jan 7, 9:00 AM",
-  "public-booking__phone": "Controlled states",
+  "public-booking__desktop": "30 min Intro Call",
+  "public-booking__tablet": "Tuesday, May 6",
+  "public-booking__phone": "Continue to confirmation",
 };
 
 export function createUiSnapshotCases(): UiSnapshotCase[] {

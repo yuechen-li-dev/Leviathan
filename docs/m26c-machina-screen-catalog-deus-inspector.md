@@ -258,6 +258,16 @@ Backend verification:
 
 - the canonical screen catalog currently drives the Playwright snapshot metadata layer, not runtime route resolution
 - real backend smoke bundles still use route-derived names such as `real-confirmed-booking` rather than catalog task keys
+
+## M27A follow-up
+
+M27A builds directly on this catalog and inspector work for the refreshed public booking UX.
+
+See:
+
+- `docs/m27a-scheduling-public-booking-ux-pass.md`
+
+The public booking screen now exposes booking-specific Machina regions, updated screen expectations, and richer DOM-summary structure while keeping the M26C artifact and overlay contracts intact.
 - the docked inspector and overlay are intentionally dual-mode for now instead of fully unified
 - overlay enablement is query-driven and test-oriented, not a generalized user-facing debug mode selector
 

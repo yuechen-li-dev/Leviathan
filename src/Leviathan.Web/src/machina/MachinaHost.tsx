@@ -5,6 +5,7 @@ import { attachPopstateRouteAdapter, initialRouteFromLocation, mirrorRouteToHist
 import { buildAppsLayout, buildRustSimulatorLayout } from "./layouts";
 import { buildSchedulingLayout } from "../apps/scheduling/layouts";
 import { resolveSchedulingFixtureScenario } from "../apps/scheduling/fixtures";
+import { SchedulingBookingPageProvider } from "../apps/scheduling/views";
 import type { DispatchFn, LeviathanDispatch, ShellState } from "./types";
 import { commandForEvent, runShellCommand } from "./shellCommands";
 import { reduceShellState } from "./shellDispatch";
@@ -143,7 +144,7 @@ export function MachinaHost() {
     };
   }, [debugEnabled, snapshot, debugInspector.shellSummary, layoutNodes, recentEvents, debugInspector.promptMapping, state, inspectorOpen]);
 
-  return (
+  const content = (
     <>
       {debugEnabled && !inspectorBehavior.showOverlay && (
         <button className="inspector-toggle" onClick={() => setInspectorOpen((open) => !open)}>
@@ -168,4 +169,10 @@ export function MachinaHost() {
       />
     </>
   );
+
+  if (state.route === "scheduling" && schedulingScenario?.surface === "booking") {
+    return <SchedulingBookingPageProvider scenario={schedulingScenario}>{content}</SchedulingBookingPageProvider>;
+  }
+
+  return content;
 }

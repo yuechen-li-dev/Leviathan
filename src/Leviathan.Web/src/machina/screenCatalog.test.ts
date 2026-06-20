@@ -48,7 +48,7 @@ describe("screen catalog", () => {
       captureSource: "fixture-or-live",
       supportsLiveRoute: true,
       artifactBaseName: "public-booking",
-      expectedHeading: "Pick a slot",
+      expectedHeading: "Choose a date and time",
     });
     expect(task).toMatchObject({
       artifactBaseName: "public-booking__phone",

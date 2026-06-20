@@ -68,7 +68,7 @@ describe("scheduling frontend module", () => {
     const html = renderToStaticMarkup(createElement(SchedulingHomeView, { scenario: resolveSchedulingFixtureScenario({ pathname: "/apps/scheduling", search: "?fixture=landing" }) }));
     expect(html).toContain("Action cards");
     expect(html).toContain("Provider setup");
-    expect(html).toContain("Resource-first booking");
+    expect(html).toContain("Public booking with a calm summary panel");
   });
 
   it("provider setup view renders local/dev warning and public link", () => {

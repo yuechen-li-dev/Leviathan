@@ -3,7 +3,17 @@ import { MachinaTextView } from "machinalayout/text/react";
 import type { DispatchFn } from "./types";
 import type { LeviathanViewData } from "./layouts";
 import { mapPrompt } from "./ariadneMapping";
-import { SchedulingHeroView, SchedulingMainView, SchedulingSidebarView } from "../apps/scheduling/views";
+import {
+  BookingCalendarRegionView,
+  BookingFooterSummaryView,
+  BookingHeaderView,
+  BookingMainHeaderView,
+  BookingSlotsRegionView,
+  BookingSummaryPanelView,
+  SchedulingHeroView,
+  SchedulingMainView,
+  SchedulingSidebarView,
+} from "../apps/scheduling/views";
 
 type SlotProps = MachinaSlotProps<unknown, { dispatch: DispatchFn }>;
 const dispatchOf = (props: SlotProps) => props.nodeData?.dispatch;
@@ -167,6 +177,12 @@ export const viewRegistry = {
   schedulingHero: SchedulingHeroView,
   schedulingMain: SchedulingMainView,
   schedulingSidebar: SchedulingSidebarView,
+  bookingHeader: BookingHeaderView,
+  bookingSummaryPanel: BookingSummaryPanelView,
+  bookingMainHeader: BookingMainHeaderView,
+  bookingCalendarRegion: BookingCalendarRegionView,
+  bookingSlotsRegion: BookingSlotsRegionView,
+  bookingFooterSummary: BookingFooterSummaryView,
 };
 
 type DebugInspectorData = {

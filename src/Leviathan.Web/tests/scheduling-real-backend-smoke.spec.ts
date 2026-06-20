@@ -49,8 +49,8 @@ test.describe("Scheduling real backend smoke", () => {
     });
 
     await navigateToHref(page, "setup-public-link");
-    await expect(page.getByRole("heading", { name: "Pick a slot" })).toBeVisible();
-    await expect(page.locator(".scheduling-slot-button").first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Choose a date and time" })).toBeVisible();
+    await expect(page.getByTestId("public-slot-option").first()).toBeVisible();
 
     await captureLeviathanUiHandoffBundle(page, testInfo, {
       name: "real-public-booking-slots",
@@ -58,7 +58,7 @@ test.describe("Scheduling real backend smoke", () => {
       artifactRoot: "ui-snapshots-real",
     });
 
-    await page.locator(".scheduling-slot-button").first().click();
+    await page.getByTestId("public-slot-option").first().click();
     await expect(page.getByTestId("public-hold-state")).toContainText("Hold id:");
     await clickAction(page, "public-submit-intake");
 

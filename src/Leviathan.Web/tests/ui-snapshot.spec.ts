@@ -64,7 +64,7 @@ test.describe("Leviathan UI snapshot workbench", () => {
       "data-machina-debug-overlay-mode",
       "nonInteractiveOverlay",
     );
-    await expect(page.getByTestId("machina-debug-overlay-node-scheduling-main")).toBeVisible();
+    await expect(page.getByTestId("machina-debug-overlay-node-booking-main-panel")).toBeVisible();
     await expect(page.getByRole("button", { name: /Inspector/ })).toHaveCount(0);
   });
 });

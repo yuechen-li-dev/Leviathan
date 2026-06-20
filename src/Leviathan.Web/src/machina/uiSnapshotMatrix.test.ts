@@ -39,7 +39,7 @@ describe("UI snapshot task matrix", () => {
       taskKey: "public-booking__phone",
       artifactBaseName: "public-booking__phone",
       route: "/book/demo-provider?debug=1&fixture=public-booking&debugOverlay=nonInteractiveOverlay",
-      expectedText: "Controlled states",
+      expectedText: "Continue to confirmation",
       expectedMachinaRoute: "scheduling",
       tags: ["scheduling", "fixture", "mocked", "booking", "phone", "mobile"],
       metadata: {

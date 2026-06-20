@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { MachinaSlotProps } from "machinalayout/react";
 import type {
   BookableSlot,
@@ -36,7 +36,7 @@ import {
   submitIntake,
 } from "./api";
 import { slotSelected } from "./dispatch";
-import type { SchedulingFixtureScenario } from "./fixtures";
+import { resolveSchedulingFixtureScenario, type SchedulingFixtureScenario } from "./fixtures";
 
 type SlotProps = MachinaSlotProps<unknown, { dispatch?: (event: unknown) => void }>;
 type DispatchNodeData = { dispatch?: (event: unknown) => void };
@@ -58,6 +58,13 @@ const defaultCustomer = {
   email: "m24-smoke@example.test",
   phone: "555-0100",
   notes: "Created by the Leviathan M24 real-backend smoke.",
+};
+
+const fixtureCustomer = {
+  name: "",
+  email: "",
+  phone: "",
+  notes: "",
 };
 
 const livePaymentPolicy = {
@@ -172,6 +179,393 @@ function liveRouteTitle() {
   return "Scheduling";
 }
 
+type BookingPageContextValue = {
+  live: boolean;
+  scenario: SchedulingFixtureScenario;
+  providerName: string;
+  providerRole: string;
+  providerDescription: string;
+  providerSlug?: string;
+  providerTimeZone: string;
+  providerAvailabilityLabel: string;
+  services: SchedulingService[];
+  selectedService?: SchedulingService;
+  selectedServiceId?: string;
+  selectedServiceDurationLabel: string;
+  serviceLocationLabel: string;
+  servicePriceLabel: string;
+  selectedDateKey?: string;
+  selectedSlot?: BookableSlot;
+  hold: HoldResponse | null;
+  booking: Booking | null;
+  busy: string | null;
+  errorMessage?: string;
+  customer: typeof defaultCustomer;
+  monthLabel: string;
+  monthCanGoPrevious: boolean;
+  monthCanGoNext: boolean;
+  calendarWeeks: CalendarCell[][];
+  dayHeadline: string;
+  slotGroups: SlotPresentation[];
+  timezoneLabel: string;
+  intakeReady: boolean;
+  hasPaymentAlert: boolean;
+  paymentAlertText?: string;
+  stepIndex: 0 | 1 | 2;
+  whatToExpectLines: string[];
+  trustNotes: string[];
+  selectService: (serviceId: string) => void;
+  selectDate: (dateKey: string) => void;
+  selectSlot: (slot: BookableSlot) => void;
+  clearSelection: () => void;
+  setCustomerField: (field: "name" | "email" | "phone" | "notes", value: string) => void;
+  submitIntake: () => void;
+  confirmBooking: () => void;
+  satisfyPayment: () => void;
+};
+
+type CalendarCell = {
+  key: string;
+  dayNumber: number;
+  dateKey?: string;
+  available: boolean;
+  selected: boolean;
+  outsideMonth: boolean;
+};
+
+type SlotPresentation = {
+  slot: BookableSlot;
+  label: string;
+  sublabel: string;
+  selected: boolean;
+};
+
+const BookingPageContext = createContext<BookingPageContextValue | null>(null);
+
+function useBookingPage() {
+  const value = useContext(BookingPageContext);
+  if (!value) throw new Error("Scheduling booking page context is unavailable.");
+  return value;
+}
+
+export function SchedulingBookingPageProvider(props: {
+  scenario?: SchedulingFixtureScenario | null;
+  children: ReactNode;
+}) {
+  const scenario =
+    props.scenario ??
+    resolveSchedulingFixtureScenario({
+      pathname: typeof window === "undefined" ? "/book/demo-provider" : window.location.pathname,
+      search: typeof window === "undefined" ? "?fixture=public-booking" : window.location.search,
+    } as Location);
+  const live = !isFixtureMode();
+  const liveContext = loadLiveContext();
+  const fixturePreferredSlot =
+    scenario.slots?.find((slot) => slot.displayLabel.includes("Fri May 16, 10:00 AM")) ??
+    scenario.slots?.find((slot) => slot.displayLabel.includes("10:00 AM")) ??
+    scenario.slots?.[0];
+  const [providerName, setProviderName] = useState(scenario.providerName ?? liveContext.providerName ?? "Emma Brown");
+  const [providerSlug, setProviderSlug] = useState(scenario.providerSlug ?? liveContext.providerSlug);
+  const [providerTimeZone, setProviderTimeZone] = useState(scenario.providerTimeZone ?? liveContext.providerTimeZone ?? browserTimeZone());
+  const [providerDescription, setProviderDescription] = useState(
+    live ? "Public booking with the existing Leviathan local-dev backend flow." : "Office Hours",
+  );
+  const [services, setServices] = useState<SchedulingService[]>(
+    live ? [] : scenario.services ?? [],
+  );
+  const [selectedServiceId, setSelectedServiceId] = useState<string | undefined>(
+    live
+      ? undefined
+      : scenario.services?.find((service) => service.durationMinutes === 30)?.id.value ?? scenario.services?.[0]?.id.value,
+  );
+  const [slots, setSlots] = useState<BookableSlot[]>(live ? [] : scenario.slots ?? []);
+  const [selectedDateKey, setSelectedDateKey] = useState<string | undefined>(
+    live ? undefined : fixturePreferredSlot ? dateKeyForSlot(fixturePreferredSlot) : undefined,
+  );
+  const [selectedSlotKey, setSelectedSlotKey] = useState<string | undefined>(
+    live ? undefined : fixturePreferredSlot ? slotKey(fixturePreferredSlot) : undefined,
+  );
+  const [hold, setHold] = useState<HoldResponse | null>(
+    live
+      ? null
+      : scenario.booking
+        ? {
+            holdId: "fixture-hold",
+            claimToken: "fixture-claim",
+            expiresAt: "2025-05-16T17:15:00Z",
+            status: "held",
+            paymentRequirementStatus: scenario.booking.paymentStatus ?? scenario.booking.paymentRequirementStatus,
+            paymentReference: scenario.booking.paymentReference,
+            paymentSatisfiedAt: scenario.booking.paymentSatisfiedAt,
+          }
+        : null,
+  );
+  const [booking, setBooking] = useState<Booking | null>(live ? null : scenario.booking ?? null);
+  const [errorMessage, setErrorMessage] = useState<string | undefined>(live ? undefined : scenario.errorMessage);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [customer, setCustomer] = useState(live ? defaultCustomer : fixtureCustomer);
+  const [activeMonthKey, setActiveMonthKey] = useState<string | undefined>();
+
+  useEffect(() => {
+    if (!live) return;
+    const slug = providerSlugFromPath();
+    if (!slug) return;
+    void (async () => {
+      try {
+        const [provider, liveServices] = await Promise.all([getPublicProvider(slug), getPublicServices(slug)]);
+        setProviderName(provider.displayName);
+        setProviderSlug(provider.slug);
+        setProviderTimeZone(provider.timeZoneId);
+        setProviderDescription(provider.publicDescription?.trim() || "Public booking with the existing Leviathan local-dev backend flow.");
+        setServices(liveServices.map((service) => ({ ...service, isPublic: true })));
+        setSelectedServiceId((current) =>
+          liveServices.some((service) => service.id.value === current) ? current : liveServices[0]?.id.value,
+        );
+        saveLiveContext({
+          providerId: provider.id.value,
+          providerSlug: provider.slug,
+          providerName: provider.displayName,
+          providerTimeZone: provider.timeZoneId,
+          serviceId: liveServices[0]?.id.value,
+        });
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : String(error));
+      }
+    })();
+  }, [live]);
+
+  useEffect(() => {
+    if (!live || !selectedServiceId) return;
+    const slug = providerSlugFromPath();
+    if (!slug) return;
+    void (async () => {
+      try {
+        const from = new Date();
+        const to = new Date(from.getTime() + 21 * 24 * 60 * 60 * 1000);
+        const liveSlots = await listSlots(slug, selectedServiceId, from.toISOString(), to.toISOString(), browserTimeZone());
+        setSlots(liveSlots);
+        setErrorMessage(undefined);
+        setHold(null);
+        setBooking(null);
+        setSelectedSlotKey(undefined);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : String(error));
+      }
+    })();
+  }, [live, selectedServiceId]);
+
+  const selectedService = services.find((service) => service.id.value === selectedServiceId) ?? services[0];
+  const serviceSlots = slots
+    .filter((slot) => !selectedServiceId || slot.serviceId === selectedServiceId)
+    .sort((left, right) => left.startsAtUtc.localeCompare(right.startsAtUtc));
+  const availableDates = buildAvailableDates(serviceSlots);
+  const selectedDate = selectedDateKey && availableDates.some((entry) => entry.dateKey === selectedDateKey)
+    ? selectedDateKey
+    : availableDates[0]?.dateKey;
+  const months = buildMonthOptions(availableDates);
+  const resolvedMonthKey = activeMonthKey && months.some((entry) => entry.monthKey === activeMonthKey)
+    ? activeMonthKey
+    : selectedDate
+      ? selectedDate.slice(0, 7)
+      : months[0]?.monthKey;
+  const monthIndex = months.findIndex((entry) => entry.monthKey === resolvedMonthKey);
+  const slotGroups = serviceSlots
+    .filter((slot) => !selectedDate || dateKeyForSlot(slot) === selectedDate)
+    .map((slot) => ({
+      slot,
+      label: timeLabelForSlot(slot),
+      sublabel: slot.displayStartsAtLocal,
+      selected: selectedSlotKey === slotKey(slot),
+    }));
+  const selectedSlot = serviceSlots.find((slot) => slotKey(slot) === selectedSlotKey);
+  const calendarWeeks = buildCalendarWeeks(resolvedMonthKey, availableDates, selectedDate);
+  const monthLabel = monthLabelForKey(resolvedMonthKey);
+  const dayHeadline = selectedSlot
+    ? longDateLabelForSlot(selectedSlot)
+    : selectedDate
+      ? longDateLabelForDateKey(selectedDate)
+      : "Choose a day";
+  const timezoneLabel = selectedSlot?.displayTimeZoneId ?? serviceSlots[0]?.displayTimeZoneId ?? providerTimeZone;
+  const paymentAlertText = isPaymentRequiredError(errorMessage)
+    ? "Payment is required before confirmation. Use the fake/local satisfy action, then continue to confirmation."
+    : hold?.paymentRequirementStatus === "payment_required"
+      ? "Payment is still required before confirmation."
+      : undefined;
+  const stepIndex: 0 | 1 | 2 = selectedSlot ? 1 : 0;
+
+  useEffect(() => {
+    if (selectedDate !== selectedDateKey) setSelectedDateKey(selectedDate);
+    if (resolvedMonthKey !== activeMonthKey) setActiveMonthKey(resolvedMonthKey);
+  }, [activeMonthKey, resolvedMonthKey, selectedDate, selectedDateKey]);
+
+  async function selectLiveSlot(slot: BookableSlot) {
+    try {
+      setBusy("hold");
+      setErrorMessage(undefined);
+      setBooking(null);
+      const created = await createHold(slot);
+      setHold(created);
+      setSelectedSlotKey(slotKey(slot));
+      saveLiveContext({ providerId: slot.providerId, serviceId: slot.serviceId });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function submitLiveIntake() {
+    if (!hold) return;
+    try {
+      setBusy("intake");
+      setErrorMessage(undefined);
+      const updated = await submitIntake(hold.holdId, hold.claimToken, customer);
+      setHold(updated);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function confirmLiveBooking() {
+    if (!hold) return;
+    try {
+      setBusy("confirm");
+      setErrorMessage(undefined);
+      const confirmed = await confirmBooking(hold.holdId, hold.claimToken, customer);
+      setBooking(confirmed);
+      saveLiveContext({ bookingId: confirmed.id.value });
+      if (typeof window !== "undefined") {
+        window.location.assign(linkWithCurrentQuery(`/book/${providerSlugFromPath()}/confirmed/${confirmed.id.value}`));
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function satisfyLivePayment() {
+    if (!hold) return;
+    try {
+      setBusy("payment");
+      setErrorMessage(undefined);
+      const payment = await fakeSatisfyPayment(hold.holdId, hold.claimToken);
+      setHold({
+        ...hold,
+        paymentRequirementStatus: payment.paymentRequirementStatus,
+        paymentReference: payment.paymentReference,
+        paymentSatisfiedAt: payment.paymentSatisfiedAt,
+      });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const value: BookingPageContextValue = {
+    live,
+    scenario,
+    providerName,
+    providerRole: live ? "Public booking" : "Office Hours",
+    providerDescription,
+    providerSlug,
+    providerTimeZone,
+    providerAvailabilityLabel: live ? "Available through local-dev availability" : "Available this week",
+    services,
+    selectedService,
+    selectedServiceId,
+    selectedServiceDurationLabel: selectedService ? `${selectedService.durationMinutes} min` : "Duration unavailable",
+    serviceLocationLabel: "Google Meet",
+    servicePriceLabel: servicePriceLabel(selectedService, hold),
+    selectedDateKey: selectedDate,
+    selectedSlot,
+    hold,
+    booking,
+    busy,
+    errorMessage,
+    customer,
+    monthLabel,
+    monthCanGoPrevious: monthIndex > 0,
+    monthCanGoNext: monthIndex >= 0 && monthIndex < months.length - 1,
+    calendarWeeks,
+    dayHeadline,
+    slotGroups,
+    timezoneLabel,
+    intakeReady: !!selectedSlot,
+    hasPaymentAlert: !!paymentAlertText,
+    paymentAlertText,
+    stepIndex,
+    whatToExpectLines: [
+      "We’ll meet on Google Meet.",
+      live ? "This path still uses Leviathan’s real Scheduling backend flow." : "You’ll receive a calendar invite with a link.",
+    ],
+    trustNotes: live
+      ? ["No account required", "Fake/local payment only. No real provider is connected."]
+      : ["No account required", "You can reschedule later from your confirmation email."],
+    selectService: (serviceId) => {
+      setSelectedServiceId(serviceId);
+      setSelectedSlotKey(undefined);
+      setSelectedDateKey(undefined);
+      setHold(live ? null : hold);
+      setErrorMessage(undefined);
+    },
+    selectDate: (dateKey) => {
+      setSelectedDateKey(dateKey);
+      setSelectedSlotKey(undefined);
+      if (live) {
+        setHold(null);
+        setBooking(null);
+      }
+    },
+    selectSlot: (slot) => {
+      setSelectedDateKey(dateKeyForSlot(slot));
+      if (live) {
+        void selectLiveSlot(slot);
+        return;
+      }
+      setSelectedSlotKey(slotKey(slot));
+      setHold((current) =>
+        current ?? {
+          holdId: "fixture-hold",
+          claimToken: "fixture-claim",
+          expiresAt: slot.endsAtUtc,
+          status: "held",
+          paymentRequirementStatus: scenario.errorMessage === "payment_required" ? "payment_required" : "not_required",
+        },
+      );
+      setBooking(scenario.booking ?? null);
+    },
+    clearSelection: () => {
+      setSelectedSlotKey(undefined);
+      if (live) {
+        setHold(null);
+        setBooking(null);
+      }
+    },
+    setCustomerField: (field, value) => setCustomer((current) => ({ ...current, [field]: value })),
+    submitIntake: () => {
+      if (live) {
+        void submitLiveIntake();
+      }
+    },
+    confirmBooking: () => {
+      if (live) {
+        void confirmLiveBooking();
+      }
+    },
+    satisfyPayment: () => {
+      if (live) {
+        void satisfyLivePayment();
+      }
+    },
+  };
+
+  return <BookingPageContext.Provider value={value}>{props.children}</BookingPageContext.Provider>;
+}
+
 export function SchedulingHeroView(props: SlotProps) {
   const scenario = scenarioFrom(props);
   if (!isFixtureMode()) return <LiveSchedulingHero />;
@@ -270,6 +664,317 @@ export function SchedulingSidebarView(props: SlotProps) {
           </section>
         ) : null}
       </div>
+    </section>
+  );
+}
+
+export function BookingHeaderView(props: SlotProps) {
+  void props;
+  return (
+    <header className="scheduling-booking-header">
+      <a className="scheduling-booking-brand" href={linkWithCurrentQuery("/apps/scheduling")}>
+        <span className="scheduling-booking-brand-mark" aria-hidden="true">
+          L
+        </span>
+        <span>Leviathan Scheduling</span>
+      </a>
+      <div className="scheduling-booking-header-actions">
+        <a className="scheduling-booking-header-button" href={linkWithCurrentQuery("/apps/scheduling")}>
+          Help
+        </a>
+        <a className="scheduling-booking-header-button" href={linkWithCurrentQuery("/apps")}>
+          Back to apps
+        </a>
+        <button aria-label="Theme toggle placeholder" className="scheduling-booking-header-icon" disabled type="button">
+          ◐
+        </button>
+      </div>
+    </header>
+  );
+}
+
+export function BookingSummaryPanelView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+  const service = page.selectedService;
+
+  return (
+    <section className="scheduling-booking-summary">
+      <div className="scheduling-provider-head">
+        <div className="scheduling-provider-avatar" aria-hidden="true">
+          {initialsOf(page.providerName)}
+        </div>
+        <div>
+          <h2>{page.providerName}</h2>
+          <p>{page.providerRole}</p>
+          <span className="status-chip status-chip-confirmed">{page.providerAvailabilityLabel}</span>
+        </div>
+      </div>
+
+      <div className="scheduling-booking-summary-block">
+        <h3>{service?.name ?? "Choose a service"}</h3>
+        <p>{service?.description ?? page.providerDescription}</p>
+      </div>
+
+      <dl className="scheduling-booking-meta">
+        <div>
+          <dt>Duration</dt>
+          <dd>{page.selectedServiceDurationLabel}</dd>
+        </div>
+        <div>
+          <dt>Location</dt>
+          <dd>{page.serviceLocationLabel}</dd>
+        </div>
+        <div>
+          <dt>Timezone</dt>
+          <dd>{page.providerTimeZone}</dd>
+        </div>
+        <div>
+          <dt>Price</dt>
+          <dd>{page.servicePriceLabel}</dd>
+        </div>
+      </dl>
+
+      <ol className="scheduling-booking-steps">
+        {["Select a time", "Enter details", "Confirm booking"].map((label, index) => (
+          <li className={page.stepIndex === index ? "is-active" : page.stepIndex > index ? "is-complete" : ""} key={label}>
+            <span>{index + 1}</span>
+            <strong>{label}</strong>
+          </li>
+        ))}
+      </ol>
+
+      <aside className="scheduling-booking-callout" role="note">
+        <h3>What to expect</h3>
+        {page.whatToExpectLines.map((line) => (
+          <p key={line}>{line}</p>
+        ))}
+      </aside>
+
+      <div className="scheduling-booking-trust">
+        {page.trustNotes.map((note) => (
+          <p key={note}>{note}</p>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function BookingMainHeaderView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return (
+    <section className="scheduling-booking-main-header">
+      <div>
+        <h2>Choose a date and time</h2>
+        <p>Times shown in {page.timezoneLabel}</p>
+      </div>
+      <div className="scheduling-duration-picker" role="tablist" aria-label="Available durations">
+        {page.services.map((service) => (
+          <button
+            aria-selected={page.selectedServiceId === service.id.value}
+            className={page.selectedServiceId === service.id.value ? "is-selected" : ""}
+            key={service.id.value}
+            onClick={() => page.selectService(service.id.value)}
+            role="tab"
+            type="button"
+          >
+            {service.durationMinutes}m
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function BookingCalendarRegionView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return (
+    <section className="scheduling-booking-calendar">
+      <div className="scheduling-booking-calendar-head">
+        <button disabled={!page.monthCanGoPrevious} type="button">
+          ‹
+        </button>
+        <h3>{page.monthLabel}</h3>
+        <button disabled={!page.monthCanGoNext} type="button">
+          ›
+        </button>
+      </div>
+      <div className="scheduling-booking-weekdays">
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
+          <span key={label}>{label}</span>
+        ))}
+      </div>
+      <div className="scheduling-booking-calendar-grid">
+        {page.calendarWeeks.flat().map((cell) =>
+          cell.dateKey ? (
+            <button
+              className={[
+                "scheduling-booking-day",
+                cell.available ? "is-available" : "",
+                cell.selected ? "is-selected" : "",
+                cell.outsideMonth ? "is-outside" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              disabled={!cell.available}
+              key={cell.key}
+              onClick={() => page.selectDate(cell.dateKey!)}
+              type="button"
+            >
+              <span>{cell.dayNumber}</span>
+            </button>
+          ) : (
+            <span className="scheduling-booking-day is-empty" key={cell.key} />
+          ),
+        )}
+      </div>
+      <p className="scheduling-booking-timezone-note">Times shown in {page.timezoneLabel}</p>
+    </section>
+  );
+}
+
+export function BookingSlotsRegionView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+  const showIntake = !!page.selectedSlot;
+
+  return (
+    <section className="scheduling-booking-slots">
+      <h3>{page.dayHeadline}</h3>
+
+      {page.errorMessage && !page.hasPaymentAlert ? (
+        <p className="error" role="alert">
+          {controlledSchedulingError(page.errorMessage)}
+        </p>
+      ) : null}
+
+      <div className="scheduling-booking-slot-list">
+        {page.slotGroups.map((entry) => (
+          <button
+            className={entry.selected ? "is-selected" : ""}
+            data-testid={entry.selected ? "public-selected-slot" : "public-slot-option"}
+            key={slotKey(entry.slot)}
+            onClick={() => page.selectSlot(entry.slot)}
+            type="button"
+          >
+            <strong>{entry.label}</strong>
+            <span>{entry.sublabel}</span>
+            {entry.selected ? <span aria-hidden="true">✓</span> : null}
+          </button>
+        ))}
+        {!page.slotGroups.length ? <p>No available times for this day yet.</p> : null}
+      </div>
+
+      {showIntake ? (
+        <article className="scheduling-booking-intake">
+          <label>
+            Your name
+            <input
+              data-testid="public-intake-name"
+              onChange={(event) => page.setCustomerField("name", event.target.value)}
+              placeholder="e.g., Alex Johnson"
+              value={page.customer.name}
+            />
+          </label>
+          <label>
+            Email
+            <input
+              data-testid="public-intake-email"
+              onChange={(event) => page.setCustomerField("email", event.target.value)}
+              placeholder="e.g., alex@example.com"
+              value={page.customer.email}
+            />
+          </label>
+          <label>
+            Phone
+            <input onChange={(event) => page.setCustomerField("phone", event.target.value)} placeholder="Optional" value={page.customer.phone} />
+          </label>
+          <label>
+            Notes <span className="scheduling-inline-note">(optional)</span>
+            <textarea onChange={(event) => page.setCustomerField("notes", event.target.value)} placeholder="Anything we should know?" value={page.customer.notes} />
+          </label>
+
+          {page.hasPaymentAlert ? (
+            <p className="error" data-testid="public-payment-required" role="alert">
+              {page.paymentAlertText}
+            </p>
+          ) : null}
+
+          <div className="scheduling-booking-intake-actions">
+            <button
+              data-testid="public-submit-intake"
+              disabled={page.live ? !page.hold || !!page.busy : true}
+              onClick={() => page.submitIntake()}
+              type="button"
+            >
+              {page.busy === "intake" ? "Saving details…" : "Save details"}
+            </button>
+            <button
+              data-testid="public-confirm-booking"
+              disabled={page.live ? !page.hold || !!page.busy : true}
+              onClick={() => page.confirmBooking()}
+              type="button"
+            >
+              {page.busy === "confirm" ? "Continuing…" : "Continue to confirmation"}
+            </button>
+          </div>
+
+          {page.live ? (
+            <button
+              className="scheduling-booking-ghost-button"
+              data-testid="public-fake-satisfy-payment"
+              disabled={!page.hold || !!page.busy}
+              onClick={() => page.satisfyPayment()}
+              type="button"
+            >
+              {page.busy === "payment" ? "Satisfying fake/local payment…" : "Satisfy fake/local payment"}
+            </button>
+          ) : null}
+        </article>
+      ) : null}
+    </section>
+  );
+}
+
+export function BookingFooterSummaryView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return (
+    <section className="scheduling-booking-footer" data-testid="public-hold-state">
+      <div className="scheduling-booking-footer-main">
+        <div className="scheduling-provider-avatar is-small" aria-hidden="true">
+          {initialsOf(page.providerName)}
+        </div>
+        <div>
+          <strong>{page.providerName}</strong>
+          <p>
+            {page.selectedService?.name ?? "Choose a service"}
+            {page.selectedSlot ? ` · ${longDateLabelForSlot(page.selectedSlot)} · ${page.serviceLocationLabel}` : " · Select a time to continue"}
+          </p>
+        </div>
+      </div>
+      <dl className="scheduling-booking-footer-state">
+        <div>
+          <dt>Hold id:</dt>
+          <dd>{page.hold?.holdId ?? "none"}</dd>
+        </div>
+        <div>
+          <dt>Hold status:</dt>
+          <dd>{page.hold?.status ?? "none"}</dd>
+        </div>
+        <div>
+          <dt>Payment reference:</dt>
+          <dd>{page.hold?.paymentReference ?? "none"}</dd>
+        </div>
+      </dl>
+      <button disabled={!page.selectedSlot} onClick={() => page.clearSelection()} type="button">
+        Cancel selection
+      </button>
     </section>
   );
 }
@@ -699,7 +1404,10 @@ function PublicBookingFlowView({
 
 function ConfirmationSurfaceView({ scenario }: { scenario: SchedulingFixtureScenario }) {
   const booking = scenario.booking;
-  const serviceName = scenario.services?.[0]?.name ?? "30 minute consult";
+  const serviceName =
+    scenario.services?.find((service) => service.id.value === booking?.serviceId?.value)?.name ??
+    scenario.services?.find((service) => service.durationMinutes === 30)?.name ??
+    "30 min Intro Call";
   if (!booking) return null;
 
   return (
@@ -1439,6 +2147,154 @@ function LiveProviderBookingsView() {
 
 export function StatusChip({ tone, label }: { tone: "confirmed" | "warning" | "danger" | "info" | "neutral"; label: string }) {
   return <span className={`status-chip status-chip-${tone}`}>{label}</span>;
+}
+
+function slotKey(slot: BookableSlot) {
+  return `${slot.resourceId}:${slot.serviceId}:${slot.startsAtUtc}`;
+}
+
+function dateKeyForSlot(slot: BookableSlot) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: slot.displayTimeZoneId || slot.timeZoneId || "UTC",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(slot.startsAtUtc));
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+  return `${year}-${month}-${day}`;
+}
+
+function buildAvailableDates(slots: BookableSlot[]) {
+  return Array.from(
+    new Map(
+      slots.map((slot) => {
+        const dateKey = dateKeyForSlot(slot);
+        return [
+          dateKey,
+          {
+            dateKey,
+            year: Number.parseInt(dateKey.slice(0, 4), 10),
+            month: Number.parseInt(dateKey.slice(5, 7), 10),
+            day: Number.parseInt(dateKey.slice(8, 10), 10),
+          },
+        ] as const;
+      }),
+    ).values(),
+  ).sort((left, right) => left.dateKey.localeCompare(right.dateKey));
+}
+
+function buildMonthOptions(dates: Array<{ dateKey: string; year: number; month: number; day: number }>) {
+  return Array.from(
+    new Map(
+      dates.map((entry) => [
+        entry.dateKey.slice(0, 7),
+        {
+          monthKey: entry.dateKey.slice(0, 7),
+          year: entry.year,
+          month: entry.month,
+        },
+      ]),
+    ).values(),
+  ).sort((left, right) => left.monthKey.localeCompare(right.monthKey));
+}
+
+function buildCalendarWeeks(
+  monthKey: string | undefined,
+  dates: Array<{ dateKey: string; year: number; month: number; day: number }>,
+  selectedDateKey?: string,
+): CalendarCell[][] {
+  if (!monthKey) return [];
+  const year = Number.parseInt(monthKey.slice(0, 4), 10);
+  const month = Number.parseInt(monthKey.slice(5, 7), 10);
+  const firstDay = new Date(Date.UTC(year, month - 1, 1));
+  const firstWeekday = firstDay.getUTCDay();
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const availableSet = new Set(dates.map((entry) => entry.dateKey));
+  const cells: CalendarCell[] = [];
+
+  for (let index = 0; index < firstWeekday; index += 1) {
+    cells.push({ key: `empty-start-${index}`, dayNumber: 0, available: false, selected: false, outsideMonth: true });
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dateKey = `${monthKey}-${String(day).padStart(2, "0")}`;
+    cells.push({
+      key: dateKey,
+      dayNumber: day,
+      dateKey,
+      available: availableSet.has(dateKey),
+      selected: selectedDateKey === dateKey,
+      outsideMonth: false,
+    });
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push({
+      key: `empty-end-${cells.length}`,
+      dayNumber: 0,
+      available: false,
+      selected: false,
+      outsideMonth: true,
+    });
+  }
+
+  const weeks: CalendarCell[][] = [];
+  for (let index = 0; index < cells.length; index += 7) {
+    weeks.push(cells.slice(index, index + 7));
+  }
+  return weeks;
+}
+
+function monthLabelForKey(monthKey?: string) {
+  if (!monthKey) return "Choose a month";
+  const year = Number.parseInt(monthKey.slice(0, 4), 10);
+  const month = Number.parseInt(monthKey.slice(5, 7), 10);
+  return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(
+    new Date(Date.UTC(year, month - 1, 1)),
+  );
+}
+
+function timeLabelForSlot(slot: BookableSlot) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: slot.displayTimeZoneId || slot.timeZoneId || "UTC",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(slot.startsAtUtc));
+}
+
+function longDateLabelForDateKey(dateKey: string) {
+  const year = Number.parseInt(dateKey.slice(0, 4), 10);
+  const month = Number.parseInt(dateKey.slice(5, 7), 10);
+  const day = Number.parseInt(dateKey.slice(8, 10), 10);
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+}
+
+function longDateLabelForSlot(slot: BookableSlot) {
+  return `${longDateLabelForDateKey(dateKeyForSlot(slot))} at ${timeLabelForSlot(slot)}`;
+}
+
+function servicePriceLabel(service?: SchedulingService, hold?: HoldResponse | null) {
+  const paymentMode = hold?.paymentRequirementStatus ?? service?.paymentPolicy?.paymentProviderMode;
+  if (hold?.paymentRequirementStatus === "payment_required") return "Controlled fake/local payment";
+  if (service?.paymentPolicy?.requiresPrepay || service?.paymentPolicy?.requiresDeposit) return "Controlled fake/local prepay";
+  if (paymentMode === "fake/local") return "Controlled fake/local payment";
+  return "Free";
+}
+
+function initialsOf(value: string) {
+  return value
+    .split(/\s+/)
+    .map((part) => part[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 function browserTimeZone() {

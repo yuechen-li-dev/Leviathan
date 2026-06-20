@@ -117,7 +117,7 @@ describe("UI snapshot compatibility helpers", () => {
       fixture: "public-booking",
       viewport: { width: 390, height: 844 },
       generatedAt: "2026-06-19T00:00:00.000Z",
-      visibleTextExcerpt: "Pick a slot 30 minute consult",
+      visibleTextExcerpt: "Choose a date and time 30 min Intro Call",
       machinaNodeCount: 6,
       screenshotPath: "test-results/ui-snapshots/public-booking-phone/screenshot.png",
       domSummaryPath: "test-results/ui-snapshots/public-booking-phone/dom-summary.json",
@@ -166,7 +166,7 @@ describe("UI snapshot compatibility helpers", () => {
       screenshotPath: "test-results/ui-snapshots/public-booking-phone/screenshot.png",
       domSummaryPath: "test-results/ui-snapshots/public-booking-phone/dom-summary.json",
       machinaSnapshotPath: "test-results/ui-snapshots/public-booking-phone/machina-snapshot.json",
-      visibleTextExcerpt: "Pick a slot 30 minute consult",
+      visibleTextExcerpt: "Choose a date and time 30 min Intro Call",
       machinaNodeCount: 6,
       metadata: {
         screenTitle: "Public booking",
