@@ -10,6 +10,9 @@ import type { SchedulingFixtureScenario } from "./fixtures";
 
 const schedulingContentGap = 14;
 const schedulingContentPadding = 16;
+export const publicBookingVerticalBreakpoint = 768;
+
+export type PublicBookingLayoutMode = "horizontal" | "vertical";
 
 function buildSchedulingShellRows(
   rootRect: Rect,
@@ -151,18 +154,34 @@ function buildPublicBookingLayout(
   rows: LayoutRow[];
   viewData: Record<string, { scenario: SchedulingFixtureScenario }>;
 } {
+  return getPublicBookingLayoutMode(rootRect) === "vertical"
+    ? buildPublicBookingVerticalLayout(rootRect, scenario, inspectorEnabled)
+    : buildPublicBookingHorizontalLayout(rootRect, scenario, inspectorEnabled);
+}
+
+export function getPublicBookingLayoutMode(rootRect: Rect): PublicBookingLayoutMode {
+  return rootRect.width < publicBookingVerticalBreakpoint ? "vertical" : "horizontal";
+}
+
+export function buildPublicBookingHorizontalLayout(
+  rootRect: Rect,
+  scenario: SchedulingFixtureScenario,
+  inspectorEnabled: boolean,
+): {
+  rows: LayoutRow[];
+  viewData: Record<string, { scenario: SchedulingFixtureScenario }>;
+} {
   const desktop = rootRect.width >= 1180;
-  const stacked = rootRect.width < 900;
   const headerHeight = rootRect.width >= 720 ? 82 : 74;
   const inspectorHeight = getSchedulingInspectorHeight(rootRect, inspectorEnabled);
-  const bookingRootPadding = rootRect.width < 640 ? 12 : 20;
+  const bookingRootPadding = rootRect.width < 1080 ? 16 : 20;
   const bookingRootGap = 20;
   const shellRows = [
     {
       id: "root",
       frame: { kind: "root" as const },
       arrange: { kind: "stack" as const, axis: "vertical" as const },
-      debugLabel: `Scheduling booking shell ${rootRect.width}x${rootRect.height}`,
+      debugLabel: `Scheduling booking horizontal shell ${rootRect.width}x${rootRect.height}`,
     },
     {
       id: "booking-header",
@@ -172,16 +191,16 @@ function buildPublicBookingLayout(
       debugLabel: "Public booking header",
     },
     {
-      id: "booking-root",
+      id: "booking-root-horizontal",
       parent: "root",
       frame: { kind: "fill" as const, weight: 1, cross: "fill" as const },
       arrange: {
         kind: "stack" as const,
-        axis: stacked ? "vertical" : "horizontal",
+        axis: "horizontal" as const,
         gap: bookingRootGap,
         padding: bookingRootPadding,
       },
-      debugLabel: stacked ? "Public booking stacked body" : "Public booking two-column body",
+      debugLabel: "Public booking horizontal root",
     },
     ...(inspectorHeight > 0
       ? [
@@ -204,52 +223,35 @@ function buildPublicBookingLayout(
   });
   const bookingRootContentRect = getArrangeContentRect(bodyRect, {
     kind: "stack",
-    axis: stacked ? "vertical" : "horizontal",
+    axis: "horizontal",
     gap: bookingRootGap,
     padding: bookingRootPadding,
   });
-  const summaryWidth = stacked
-    ? Math.max(320, bookingRootContentRect.width)
-    : Math.min(372, Math.max(300, Math.round(bookingRootContentRect.width * 0.28)));
-  const mainWidth = stacked
-    ? Math.max(320, bookingRootContentRect.width)
-    : Math.max(320, bookingRootContentRect.width - summaryWidth - bookingRootGap - 12);
-  const minimumMainHeight = 320;
-  const desiredSummaryHeight = Math.max(120, Math.min(180, Math.round(bookingRootContentRect.height * 0.24)));
-  const stackedSummaryHeight =
-    bookingRootContentRect.height - desiredSummaryHeight - bookingRootGap < minimumMainHeight
-      ? Math.max(160, bookingRootContentRect.height - minimumMainHeight - bookingRootGap)
-      : desiredSummaryHeight;
-  const summaryHeight = stacked ? stackedSummaryHeight : Math.max(420, bookingRootContentRect.height - 1);
-  const mainHeight = stacked
-    ? Math.max(260, bookingRootContentRect.height - summaryHeight - bookingRootGap)
-    : Math.max(420, bookingRootContentRect.height - 1);
-  const mainHeaderHeight = stacked ? 84 : 104;
-  const footerHeight = stacked ? 76 : 108;
-  const bodyHeight = stacked
-    ? Math.max(220, mainHeight - mainHeaderHeight - footerHeight)
-    : Math.max(320, mainHeight - mainHeaderHeight - footerHeight);
+  const summaryWidth = Math.min(372, Math.max(280, Math.round(bookingRootContentRect.width * 0.28)));
+  const mainWidth = Math.max(340, bookingRootContentRect.width - summaryWidth - bookingRootGap - 12);
+  const summaryHeight = Math.max(420, bookingRootContentRect.height - 1);
+  const mainHeight = Math.max(420, bookingRootContentRect.height - 1);
+  const mainHeaderHeight = rootRect.width < 900 ? 96 : 104;
+  const footerHeight = rootRect.width < 900 ? 116 : 108;
+  const bodyHeight = Math.max(320, mainHeight - mainHeaderHeight - footerHeight);
   const mainInnerWidth = Math.max(320, mainWidth - 12);
-  const calendarWidth = stacked
-    ? mainInnerWidth
-    : Math.max(360, Math.round(mainInnerWidth * (desktop ? 0.54 : 0.5)));
-  const slotsWidth = stacked ? mainInnerWidth : Math.min(440, Math.max(360, Math.round(mainInnerWidth * 0.38)));
-  const calendarHeight = stacked ? 220 : bodyHeight;
-  const slotsHeight = stacked ? Math.max(100, bodyHeight - calendarHeight) : bodyHeight;
+  const calendarWidth = Math.max(320, Math.round(mainInnerWidth * (desktop ? 0.54 : 0.5)));
+  const slotsWidth = Math.min(440, Math.max(320, mainInnerWidth - calendarWidth - 16));
+  const slotsHeight = bodyHeight;
 
   return {
     rows: [
       ...shellRows,
       {
         id: "booking-summary-panel",
-        parent: "booking-root",
+        parent: "booking-root-horizontal",
         frame: { kind: "fixed", width: summaryWidth, height: summaryHeight },
         view: "bookingSummaryPanel",
         debugLabel: "Public booking summary panel",
       },
       {
         id: "booking-main-panel",
-        parent: "booking-root",
+        parent: "booking-root-horizontal",
         frame: { kind: "fixed", width: mainWidth, height: mainHeight },
         arrange: { kind: "stack", axis: "vertical", gap: 0, padding: 0 },
         debugLabel: "Public booking main panel",
@@ -265,24 +267,20 @@ function buildPublicBookingLayout(
         id: "booking-main-body",
         parent: "booking-main-panel",
         frame: { kind: "fixed", width: mainInnerWidth, height: bodyHeight },
-        arrange: { kind: "stack", axis: stacked ? "vertical" : "horizontal", gap: stacked ? 0 : 16 },
+        arrange: { kind: "stack", axis: "horizontal", gap: 16 },
         debugLabel: "Public booking calendar and slots body",
       },
       {
         id: "booking-calendar-region",
         parent: "booking-main-body",
-        frame: stacked
-          ? { kind: "fixed", width: calendarWidth, height: calendarHeight }
-          : { kind: "fill", weight: 1, cross: "fill" },
+        frame: { kind: "fill", weight: 1, cross: "fill" },
         view: "bookingCalendarRegion",
         debugLabel: "Public booking calendar region",
       },
       {
         id: "booking-slots-region",
         parent: "booking-main-body",
-        frame: stacked
-          ? { kind: "fill", weight: 1, cross: "fill" }
-          : { kind: "fixed", width: slotsWidth, height: slotsHeight },
+        frame: { kind: "fixed", width: slotsWidth, height: slotsHeight },
         view: "bookingSlotsRegion",
         debugLabel: "Public booking slot and intake region",
       },
@@ -301,6 +299,128 @@ function buildPublicBookingLayout(
       bookingCalendarRegion: { scenario },
       bookingSlotsRegion: { scenario },
       bookingFooterSummary: { scenario },
+    },
+  };
+}
+
+export function buildPublicBookingVerticalLayout(
+  rootRect: Rect,
+  scenario: SchedulingFixtureScenario,
+  inspectorEnabled: boolean,
+): {
+  rows: LayoutRow[];
+  viewData: Record<string, { scenario: SchedulingFixtureScenario }>;
+} {
+  const headerHeight = 82;
+  const inspectorHeight = getSchedulingInspectorHeight(rootRect, inspectorEnabled);
+  const shellRows = [
+    {
+      id: "root",
+      frame: { kind: "root" as const },
+      arrange: { kind: "stack" as const, axis: "vertical" as const },
+      debugLabel: `Scheduling booking vertical shell ${rootRect.width}x${rootRect.height}`,
+    },
+    {
+      id: "booking-header-mobile",
+      parent: "root",
+      frame: { kind: "fixed" as const, width: rootRect.width, height: headerHeight },
+      view: "bookingMobileHeader",
+      debugLabel: "Public booking mobile header",
+    },
+    {
+      id: "booking-root-vertical",
+      parent: "root",
+      frame: { kind: "fill" as const, weight: 1, cross: "fill" as const },
+      debugLabel: "Public booking vertical root",
+    },
+    ...(inspectorHeight > 0
+      ? [
+          {
+            id: "debug-inspector",
+            parent: "root",
+            frame: { kind: "fixed" as const, width: rootRect.width, height: inspectorHeight },
+            view: "debugInspector",
+            debugLabel: "M23 debug layout/state inspector",
+          },
+        ]
+      : []),
+  ] satisfies LayoutRow[];
+
+  const bodyRect = getRemainingStackRect(resolveLayoutRows(shellRows, rootRect), {
+    parentId: "root",
+    afterChildren: ["booking-header-mobile"],
+    beforeChildren: inspectorHeight > 0 ? ["debug-inspector"] : undefined,
+  });
+  const cardX = 12;
+  const cardY = 12;
+  const cardWidth = Math.max(320, bodyRect.width - 24);
+  const gap = 12;
+  const summaryHeight = 186;
+  const stepHeight = 92;
+  const calendarHeight = 402;
+  const slotsHeight = 304;
+  const intakeHeight = 448;
+  const confirmHeight = 188;
+  const stepY = cardY + summaryHeight + gap;
+  const calendarY = stepY + stepHeight + gap;
+  const slotsY = calendarY + calendarHeight + gap;
+  const intakeY = slotsY + slotsHeight + gap;
+  const confirmY = intakeY + intakeHeight + gap;
+
+  return {
+    rows: [
+      ...shellRows,
+      {
+        id: "booking-mobile-summary-card",
+        parent: "booking-root-vertical",
+        frame: { kind: "absolute", x: cardX, y: cardY, width: cardWidth, height: summaryHeight },
+        view: "bookingMobileSummaryCard",
+        debugLabel: "Public booking mobile summary",
+      },
+      {
+        id: "booking-mobile-step-status",
+        parent: "booking-root-vertical",
+        frame: { kind: "absolute", x: cardX, y: stepY, width: cardWidth, height: stepHeight },
+        view: "bookingMobileStepStatus",
+        debugLabel: "Public booking mobile step status",
+      },
+      {
+        id: "booking-mobile-calendar-card",
+        parent: "booking-root-vertical",
+        frame: { kind: "absolute", x: cardX, y: calendarY, width: cardWidth, height: calendarHeight },
+        view: "bookingMobileCalendarCard",
+        debugLabel: "Public booking mobile calendar",
+      },
+      {
+        id: "booking-mobile-slots-card",
+        parent: "booking-root-vertical",
+        frame: { kind: "absolute", x: cardX, y: slotsY, width: cardWidth, height: slotsHeight },
+        view: "bookingMobileSlotsCard",
+        debugLabel: "Public booking mobile slots",
+      },
+      {
+        id: "booking-mobile-intake-card",
+        parent: "booking-root-vertical",
+        frame: { kind: "absolute", x: cardX, y: intakeY, width: cardWidth, height: intakeHeight },
+        view: "bookingMobileIntakeCard",
+        debugLabel: "Public booking mobile intake",
+      },
+      {
+        id: "booking-mobile-confirm-footer",
+        parent: "booking-root-vertical",
+        frame: { kind: "absolute", x: cardX, y: confirmY, width: cardWidth, height: confirmHeight },
+        view: "bookingMobileConfirmFooter",
+        debugLabel: "Public booking mobile confirm footer",
+      },
+    ],
+    viewData: {
+      bookingMobileHeader: { scenario },
+      bookingMobileSummaryCard: { scenario },
+      bookingMobileStepStatus: { scenario },
+      bookingMobileCalendarCard: { scenario },
+      bookingMobileSlotsCard: { scenario },
+      bookingMobileIntakeCard: { scenario },
+      bookingMobileConfirmFooter: { scenario },
     },
   };
 }

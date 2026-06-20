@@ -49,6 +49,14 @@ describe("screen catalog", () => {
       supportsLiveRoute: true,
       artifactBaseName: "public-booking",
       expectedHeading: "Choose a date and time",
+      expectedNodeIdsByViewport: {
+        phone: expect.arrayContaining([
+          "booking-header-mobile",
+          "booking-root-vertical",
+          "booking-mobile-summary-card",
+          "booking-mobile-calendar-card",
+        ]),
+      },
     });
     expect(task).toMatchObject({
       artifactBaseName: "public-booking__phone",

@@ -34,7 +34,7 @@ const taskTextOverrides: Record<string, string> = {
   "scheduling-landing__tablet": "Current proof points",
   "scheduling-landing__phone": "Unsafe local-dev ownership context",
   "public-booking__desktop": "30 min Intro Call",
-  "public-booking__tablet": "Tuesday, May 6",
+  "public-booking__tablet": "Friday, May 16",
   "public-booking__phone": "Continue to confirmation",
 };
 
@@ -42,15 +42,16 @@ export function createUiSnapshotCases(): UiSnapshotCase[] {
   return createLeviathanScreenTasks().map((task) => {
     const metadata = getLeviathanScreenMetadata(task);
     const overlayMode = metadata.debugOverlayByViewport?.[task.viewportKey as "desktop" | "tablet" | "phone"];
+    const expectedNodeIds = metadata.expectedNodeIdsByViewport?.[task.viewportKey as "desktop" | "tablet" | "phone"] ?? metadata.expectedNodeIds;
 
     return {
       name: `${task.screenKey}-${task.viewportKey}`,
       route: routeWithDebugOverlay(task.route, overlayMode),
       viewport: { width: task.viewport.width, height: task.viewport.height },
-      expectedHeading: metadata.expectedHeading,
+      expectedHeading: metadata.expectedHeadingByViewport?.[task.viewportKey as "desktop" | "tablet" | "phone"] ?? metadata.expectedHeading,
       expectedNodeIds: overlayMode
-        ? metadata.expectedNodeIds.filter((nodeId) => nodeId !== "debug-inspector")
-        : [...metadata.expectedNodeIds],
+        ? expectedNodeIds.filter((nodeId) => nodeId !== "debug-inspector")
+        : [...expectedNodeIds],
       expectedText: taskTextOverrides[task.key] ?? metadata.expectedText,
       expectedMachinaRoute: metadata.expectedMachinaRoute,
       taskKey: task.key,

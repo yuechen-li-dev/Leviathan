@@ -207,3 +207,13 @@ Backend verification:
 - mobile public booking polish
 - reschedule browser coverage
 - reusable shadcn-style component extraction if the local approximations keep spreading
+
+## Follow-up note
+
+M27A proved the desktop public-booking concept and kept the real backend path intact, but it still relied on one shared responsive composition for desktop, tablet, and phone.
+
+M27B follows this pass by splitting the phone/vertical experience into its own explicit Machina layout while preserving the same booking state and backend behavior.
+
+See:
+
+- `docs/m27b-public-booking-responsive-rearchitecture.md`

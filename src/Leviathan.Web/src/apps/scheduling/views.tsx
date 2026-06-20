@@ -668,10 +668,11 @@ export function SchedulingSidebarView(props: SlotProps) {
   );
 }
 
-export function BookingHeaderView(props: SlotProps) {
-  void props;
+function BookingHeaderContent({ mobile = false }: { mobile?: boolean }) {
+  const headerClassName = mobile ? "scheduling-booking-header is-mobile" : "scheduling-booking-header";
+
   return (
-    <header className="scheduling-booking-header">
+    <header className={headerClassName}>
       <a className="scheduling-booking-brand" href={linkWithCurrentQuery("/apps/scheduling")}>
         <span className="scheduling-booking-brand-mark" aria-hidden="true">
           L
@@ -693,107 +694,133 @@ export function BookingHeaderView(props: SlotProps) {
   );
 }
 
-export function BookingSummaryPanelView(props: SlotProps) {
-  void props;
-  const page = useBookingPage();
+function BookingProviderIdentity({
+  page,
+  compact = false,
+}: {
+  page: BookingPageContextValue;
+  compact?: boolean;
+}) {
+  return (
+    <div className={compact ? "scheduling-provider-head is-compact" : "scheduling-provider-head"}>
+      <div className="scheduling-provider-avatar" aria-hidden="true">
+        {initialsOf(page.providerName)}
+      </div>
+      <div>
+        <h2>{page.providerName}</h2>
+        <p>{page.providerRole}</p>
+        <span className="status-chip status-chip-confirmed">{page.providerAvailabilityLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+function BookingServiceSummary({
+  page,
+  compact = false,
+}: {
+  page: BookingPageContextValue;
+  compact?: boolean;
+}) {
   const service = page.selectedService;
 
   return (
-    <section className="scheduling-booking-summary">
-      <div className="scheduling-provider-head">
-        <div className="scheduling-provider-avatar" aria-hidden="true">
-          {initialsOf(page.providerName)}
-        </div>
-        <div>
-          <h2>{page.providerName}</h2>
-          <p>{page.providerRole}</p>
-          <span className="status-chip status-chip-confirmed">{page.providerAvailabilityLabel}</span>
-        </div>
-      </div>
-
-      <div className="scheduling-booking-summary-block">
-        <h3>{service?.name ?? "Choose a service"}</h3>
-        <p>{service?.description ?? page.providerDescription}</p>
-      </div>
-
-      <dl className="scheduling-booking-meta">
-        <div>
-          <dt>Duration</dt>
-          <dd>{page.selectedServiceDurationLabel}</dd>
-        </div>
-        <div>
-          <dt>Location</dt>
-          <dd>{page.serviceLocationLabel}</dd>
-        </div>
-        <div>
-          <dt>Timezone</dt>
-          <dd>{page.providerTimeZone}</dd>
-        </div>
-        <div>
-          <dt>Price</dt>
-          <dd>{page.servicePriceLabel}</dd>
-        </div>
-      </dl>
-
-      <ol className="scheduling-booking-steps">
-        {["Select a time", "Enter details", "Confirm booking"].map((label, index) => (
-          <li className={page.stepIndex === index ? "is-active" : page.stepIndex > index ? "is-complete" : ""} key={label}>
-            <span>{index + 1}</span>
-            <strong>{label}</strong>
-          </li>
-        ))}
-      </ol>
-
-      <aside className="scheduling-booking-callout" role="note">
-        <h3>What to expect</h3>
-        {page.whatToExpectLines.map((line) => (
-          <p key={line}>{line}</p>
-        ))}
-      </aside>
-
-      <div className="scheduling-booking-trust">
-        {page.trustNotes.map((note) => (
-          <p key={note}>{note}</p>
-        ))}
-      </div>
-    </section>
+    <div className={compact ? "scheduling-booking-summary-block is-compact" : "scheduling-booking-summary-block"}>
+      <h3>{service?.name ?? "Choose a service"}</h3>
+      <p>{service?.description ?? page.providerDescription}</p>
+    </div>
   );
 }
 
-export function BookingMainHeaderView(props: SlotProps) {
-  void props;
-  const page = useBookingPage();
-
+function BookingMetaRows({
+  page,
+  compact = false,
+}: {
+  page: BookingPageContextValue;
+  compact?: boolean;
+}) {
   return (
-    <section className="scheduling-booking-main-header">
+    <dl className={compact ? "scheduling-booking-meta is-compact" : "scheduling-booking-meta"}>
       <div>
-        <h2>Choose a date and time</h2>
-        <p>Times shown in {page.timezoneLabel}</p>
+        <dt>Duration</dt>
+        <dd>{page.selectedServiceDurationLabel}</dd>
       </div>
-      <div className="scheduling-duration-picker" role="tablist" aria-label="Available durations">
-        {page.services.map((service) => (
-          <button
-            aria-selected={page.selectedServiceId === service.id.value}
-            className={page.selectedServiceId === service.id.value ? "is-selected" : ""}
-            key={service.id.value}
-            onClick={() => page.selectService(service.id.value)}
-            role="tab"
-            type="button"
-          >
-            {service.durationMinutes}m
-          </button>
-        ))}
+      <div>
+        <dt>Location</dt>
+        <dd>{page.serviceLocationLabel}</dd>
       </div>
-    </section>
+      <div>
+        <dt>Timezone</dt>
+        <dd>{page.providerTimeZone}</dd>
+      </div>
+      <div>
+        <dt>Price</dt>
+        <dd>{page.servicePriceLabel}</dd>
+      </div>
+    </dl>
   );
 }
 
-export function BookingCalendarRegionView(props: SlotProps) {
-  void props;
-  const page = useBookingPage();
-
+function BookingStepList({
+  page,
+  compact = false,
+}: {
+  page: BookingPageContextValue;
+  compact?: boolean;
+}) {
   return (
-    <section className="scheduling-booking-calendar">
+    <ol className={compact ? "scheduling-booking-steps is-compact" : "scheduling-booking-steps"}>
+      {["Select a time", "Enter details", "Confirm booking"].map((label, index) => (
+        <li className={page.stepIndex === index ? "is-active" : page.stepIndex > index ? "is-complete" : ""} key={label}>
+          <span>{index + 1}</span>
+          <strong>{label}</strong>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function BookingDurationPicker({ page }: { page: BookingPageContextValue }) {
+  return (
+    <div className="scheduling-duration-picker" role="tablist" aria-label="Available durations">
+      {page.services.map((service) => (
+        <button
+          aria-selected={page.selectedServiceId === service.id.value}
+          className={page.selectedServiceId === service.id.value ? "is-selected" : ""}
+          key={service.id.value}
+          onClick={() => page.selectService(service.id.value)}
+          role="tab"
+          type="button"
+        >
+          {service.durationMinutes}m
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BookingCalendarPanel({
+  page,
+  title,
+  subtitle,
+  showDurationPicker = false,
+}: {
+  page: BookingPageContextValue;
+  title?: string;
+  subtitle?: string;
+  showDurationPicker?: boolean;
+}) {
+  return (
+    <>
+      {title ? (
+        <div className="scheduling-booking-card-head">
+          <div>
+            <h3>{title}</h3>
+            {subtitle ? <p>{subtitle}</p> : null}
+          </div>
+          {showDurationPicker ? <BookingDurationPicker page={page} /> : null}
+        </div>
+      ) : null}
       <div className="scheduling-booking-calendar-head">
         <button disabled={!page.monthCanGoPrevious} type="button">
           ‹
@@ -833,119 +860,128 @@ export function BookingCalendarRegionView(props: SlotProps) {
         )}
       </div>
       <p className="scheduling-booking-timezone-note">Times shown in {page.timezoneLabel}</p>
-    </section>
+    </>
   );
 }
 
-export function BookingSlotsRegionView(props: SlotProps) {
-  void props;
-  const page = useBookingPage();
-  const showIntake = !!page.selectedSlot;
+function BookingSlotButtonList({ page }: { page: BookingPageContextValue }) {
+  return (
+    <div className="scheduling-booking-slot-list">
+      {page.slotGroups.map((entry) => (
+        <button
+          className={entry.selected ? "is-selected" : ""}
+          data-testid={entry.selected ? "public-selected-slot" : "public-slot-option"}
+          key={slotKey(entry.slot)}
+          onClick={() => page.selectSlot(entry.slot)}
+          type="button"
+        >
+          <strong>{entry.label}</strong>
+          <span>{entry.sublabel}</span>
+          {entry.selected ? <span aria-hidden="true">✓</span> : null}
+        </button>
+      ))}
+      {!page.slotGroups.length ? <p>No available times for this day yet.</p> : null}
+    </div>
+  );
+}
+
+function BookingIntakeForm({
+  page,
+  title,
+  emptyState,
+}: {
+  page: BookingPageContextValue;
+  title?: string;
+  emptyState?: ReactNode;
+}) {
+  if (!page.selectedSlot) {
+    return (
+      <article className="scheduling-booking-intake is-empty">
+        {title ? <h3>{title}</h3> : null}
+        {emptyState ?? <p>Select a time to continue into intake and confirmation.</p>}
+      </article>
+    );
+  }
 
   return (
-    <section className="scheduling-booking-slots">
-      <h3>{page.dayHeadline}</h3>
+    <article className="scheduling-booking-intake">
+      {title ? <h3>{title}</h3> : null}
+      <label>
+        Your name
+        <input
+          data-testid="public-intake-name"
+          onChange={(event) => page.setCustomerField("name", event.target.value)}
+          placeholder="e.g., Alex Johnson"
+          value={page.customer.name}
+        />
+      </label>
+      <label>
+        Email
+        <input
+          data-testid="public-intake-email"
+          onChange={(event) => page.setCustomerField("email", event.target.value)}
+          placeholder="e.g., alex@example.com"
+          value={page.customer.email}
+        />
+      </label>
+      <label>
+        Phone
+        <input onChange={(event) => page.setCustomerField("phone", event.target.value)} placeholder="Optional" value={page.customer.phone} />
+      </label>
+      <label>
+        Notes <span className="scheduling-inline-note">(optional)</span>
+        <textarea onChange={(event) => page.setCustomerField("notes", event.target.value)} placeholder="Anything we should know?" value={page.customer.notes} />
+      </label>
 
-      {page.errorMessage && !page.hasPaymentAlert ? (
-        <p className="error" role="alert">
-          {controlledSchedulingError(page.errorMessage)}
+      {page.hasPaymentAlert ? (
+        <p className="error" data-testid="public-payment-required" role="alert">
+          {page.paymentAlertText}
         </p>
       ) : null}
 
-      <div className="scheduling-booking-slot-list">
-        {page.slotGroups.map((entry) => (
-          <button
-            className={entry.selected ? "is-selected" : ""}
-            data-testid={entry.selected ? "public-selected-slot" : "public-slot-option"}
-            key={slotKey(entry.slot)}
-            onClick={() => page.selectSlot(entry.slot)}
-            type="button"
-          >
-            <strong>{entry.label}</strong>
-            <span>{entry.sublabel}</span>
-            {entry.selected ? <span aria-hidden="true">✓</span> : null}
-          </button>
-        ))}
-        {!page.slotGroups.length ? <p>No available times for this day yet.</p> : null}
+      <div className="scheduling-booking-intake-actions">
+        <button
+          data-testid="public-submit-intake"
+          disabled={page.live ? !page.hold || !!page.busy : true}
+          onClick={() => page.submitIntake()}
+          type="button"
+        >
+          {page.busy === "intake" ? "Saving details…" : "Save details"}
+        </button>
+        <button
+          data-testid="public-confirm-booking"
+          disabled={page.live ? !page.hold || !!page.busy : true}
+          onClick={() => page.confirmBooking()}
+          type="button"
+        >
+          {page.busy === "confirm" ? "Continuing…" : "Continue to confirmation"}
+        </button>
       </div>
 
-      {showIntake ? (
-        <article className="scheduling-booking-intake">
-          <label>
-            Your name
-            <input
-              data-testid="public-intake-name"
-              onChange={(event) => page.setCustomerField("name", event.target.value)}
-              placeholder="e.g., Alex Johnson"
-              value={page.customer.name}
-            />
-          </label>
-          <label>
-            Email
-            <input
-              data-testid="public-intake-email"
-              onChange={(event) => page.setCustomerField("email", event.target.value)}
-              placeholder="e.g., alex@example.com"
-              value={page.customer.email}
-            />
-          </label>
-          <label>
-            Phone
-            <input onChange={(event) => page.setCustomerField("phone", event.target.value)} placeholder="Optional" value={page.customer.phone} />
-          </label>
-          <label>
-            Notes <span className="scheduling-inline-note">(optional)</span>
-            <textarea onChange={(event) => page.setCustomerField("notes", event.target.value)} placeholder="Anything we should know?" value={page.customer.notes} />
-          </label>
-
-          {page.hasPaymentAlert ? (
-            <p className="error" data-testid="public-payment-required" role="alert">
-              {page.paymentAlertText}
-            </p>
-          ) : null}
-
-          <div className="scheduling-booking-intake-actions">
-            <button
-              data-testid="public-submit-intake"
-              disabled={page.live ? !page.hold || !!page.busy : true}
-              onClick={() => page.submitIntake()}
-              type="button"
-            >
-              {page.busy === "intake" ? "Saving details…" : "Save details"}
-            </button>
-            <button
-              data-testid="public-confirm-booking"
-              disabled={page.live ? !page.hold || !!page.busy : true}
-              onClick={() => page.confirmBooking()}
-              type="button"
-            >
-              {page.busy === "confirm" ? "Continuing…" : "Continue to confirmation"}
-            </button>
-          </div>
-
-          {page.live ? (
-            <button
-              className="scheduling-booking-ghost-button"
-              data-testid="public-fake-satisfy-payment"
-              disabled={!page.hold || !!page.busy}
-              onClick={() => page.satisfyPayment()}
-              type="button"
-            >
-              {page.busy === "payment" ? "Satisfying fake/local payment…" : "Satisfy fake/local payment"}
-            </button>
-          ) : null}
-        </article>
+      {page.live ? (
+        <button
+          className="scheduling-booking-ghost-button"
+          data-testid="public-fake-satisfy-payment"
+          disabled={!page.hold || !!page.busy}
+          onClick={() => page.satisfyPayment()}
+          type="button"
+        >
+          {page.busy === "payment" ? "Satisfying fake/local payment…" : "Satisfy fake/local payment"}
+        </button>
       ) : null}
-    </section>
+    </article>
   );
 }
 
-export function BookingFooterSummaryView(props: SlotProps) {
-  void props;
-  const page = useBookingPage();
-
+function BookingFooterSummaryCard({
+  page,
+  compact = false,
+}: {
+  page: BookingPageContextValue;
+  compact?: boolean;
+}) {
   return (
-    <section className="scheduling-booking-footer" data-testid="public-hold-state">
+    <section className={compact ? "scheduling-booking-footer is-compact" : "scheduling-booking-footer"} data-testid="public-hold-state">
       <div className="scheduling-booking-footer-main">
         <div className="scheduling-provider-avatar is-small" aria-hidden="true">
           {initialsOf(page.providerName)}
@@ -977,6 +1013,182 @@ export function BookingFooterSummaryView(props: SlotProps) {
       </button>
     </section>
   );
+}
+
+export function BookingHeaderView(props: SlotProps) {
+  void props;
+  return <BookingHeaderContent />;
+}
+
+export function BookingMobileHeaderView(props: SlotProps) {
+  void props;
+  return <BookingHeaderContent mobile />;
+}
+
+export function BookingSummaryPanelView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return (
+    <section className="scheduling-booking-summary">
+      <BookingProviderIdentity page={page} />
+      <BookingServiceSummary page={page} />
+      <BookingMetaRows page={page} />
+      <BookingStepList page={page} />
+      <aside className="scheduling-booking-callout" role="note">
+        <h3>What to expect</h3>
+        {page.whatToExpectLines.map((line) => (
+          <p key={line}>{line}</p>
+        ))}
+      </aside>
+
+      <div className="scheduling-booking-trust">
+        {page.trustNotes.map((note) => (
+          <p key={note}>{note}</p>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function BookingMobileSummaryCardView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return (
+    <section className="scheduling-booking-summary is-mobile-card">
+      <BookingProviderIdentity page={page} compact />
+      <BookingServiceSummary page={page} compact />
+      <BookingMetaRows page={page} compact />
+    </section>
+  );
+}
+
+export function BookingMobileStepStatusView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return (
+    <section className="scheduling-booking-mobile-step-card">
+      <BookingStepList page={page} compact />
+      <p>{page.selectedSlot ? `Selected ${longDateLabelForSlot(page.selectedSlot)}` : "Choose a day, then a time, then continue into intake."}</p>
+    </section>
+  );
+}
+
+export function BookingMainHeaderView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return (
+    <section className="scheduling-booking-main-header">
+      <div>
+        <h2>Choose a date and time</h2>
+        <p>Times shown in {page.timezoneLabel}</p>
+      </div>
+      <BookingDurationPicker page={page} />
+    </section>
+  );
+}
+
+export function BookingCalendarRegionView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return (
+    <section className="scheduling-booking-calendar">
+      <BookingCalendarPanel page={page} />
+    </section>
+  );
+}
+
+export function BookingMobileCalendarCardView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return (
+    <section className="scheduling-booking-calendar is-mobile-card">
+      <BookingCalendarPanel page={page} title="Choose a date" subtitle={`Times shown in ${page.timezoneLabel}`} showDurationPicker />
+    </section>
+  );
+}
+
+export function BookingSlotsRegionView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return (
+    <section className="scheduling-booking-slots">
+      <h3>{page.dayHeadline}</h3>
+
+      {page.errorMessage && !page.hasPaymentAlert ? (
+        <p className="error" role="alert">
+          {controlledSchedulingError(page.errorMessage)}
+        </p>
+      ) : null}
+
+      <BookingSlotButtonList page={page} />
+      <BookingIntakeForm page={page} />
+    </section>
+  );
+}
+
+export function BookingMobileSlotsCardView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return (
+    <section className="scheduling-booking-slots is-mobile-card">
+      <div className="scheduling-booking-card-head">
+        <div>
+          <h3>Available times</h3>
+          <p>{page.dayHeadline}</p>
+        </div>
+      </div>
+
+      {page.errorMessage && !page.hasPaymentAlert ? (
+        <p className="error" role="alert">
+          {controlledSchedulingError(page.errorMessage)}
+        </p>
+      ) : null}
+
+      <BookingSlotButtonList page={page} />
+    </section>
+  );
+}
+
+export function BookingMobileIntakeCardView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return (
+    <section className="scheduling-booking-mobile-intake-card">
+      <BookingIntakeForm
+        page={page}
+        title="Your details"
+        emptyState={
+          <>
+            <p>Pick an available time first.</p>
+            <p>We’ll show the intake form, payment-required notice, and confirmation action here.</p>
+          </>
+        }
+      />
+    </section>
+  );
+}
+
+export function BookingFooterSummaryView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return <BookingFooterSummaryCard page={page} />;
+}
+
+export function BookingMobileConfirmFooterView(props: SlotProps) {
+  void props;
+  const page = useBookingPage();
+
+  return <BookingFooterSummaryCard page={page} compact />;
 }
 
 export function SchedulingHomeView({ scenario }: { scenario: SchedulingFixtureScenario }) {

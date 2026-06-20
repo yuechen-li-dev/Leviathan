@@ -27,7 +27,9 @@ export type LeviathanScreenMetadata = {
   supportsLiveRoute: boolean;
   artifactBaseName: string;
   expectedHeading: string;
+  expectedHeadingByViewport?: Partial<Record<LeviathanViewportKey, string>>;
   expectedNodeIds: string[];
+  expectedNodeIdsByViewport?: Partial<Record<LeviathanViewportKey, string[]>>;
   expectedText: string;
   expectedMachinaRoute: "apps" | "scheduling";
   debugOverlayByViewport?: Partial<Record<LeviathanViewportKey, LeviathanDebugOverlayMode>>;
@@ -114,9 +116,12 @@ const screens: readonly MachinaScreen[] = [
       supportsLiveRoute: true,
       artifactBaseName: "public-booking",
       expectedHeading: "Choose a date and time",
+      expectedHeadingByViewport: {
+        phone: "Choose a date",
+      },
       expectedNodeIds: [
         "booking-header",
-        "booking-root",
+        "booking-root-horizontal",
         "booking-summary-panel",
         "booking-main-panel",
         "booking-main-header",
@@ -125,6 +130,19 @@ const screens: readonly MachinaScreen[] = [
         "booking-footer-summary",
         "debug-inspector",
       ],
+      expectedNodeIdsByViewport: {
+        phone: [
+          "booking-header-mobile",
+          "booking-root-vertical",
+          "booking-mobile-summary-card",
+          "booking-mobile-step-status",
+          "booking-mobile-calendar-card",
+          "booking-mobile-slots-card",
+          "booking-mobile-intake-card",
+          "booking-mobile-confirm-footer",
+          "debug-inspector",
+        ],
+      },
       expectedText: "30 min Intro Call",
       expectedMachinaRoute: "scheduling",
       debugOverlayByViewport: {
@@ -183,7 +201,7 @@ const screens: readonly MachinaScreen[] = [
       expectedHeading: "Choose a date and time",
       expectedNodeIds: [
         "booking-header",
-        "booking-root",
+        "booking-root-horizontal",
         "booking-summary-panel",
         "booking-main-panel",
         "booking-main-header",
