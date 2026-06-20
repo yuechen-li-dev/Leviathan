@@ -1,4 +1,12 @@
-import type { LayoutRow, Rect } from "machinalayout";
+import {
+  getArrangeContentRect,
+  getRemainingStackRect,
+  getStackContentRect,
+  getStackMainAxisMetrics,
+  resolveLayoutRows,
+  type LayoutRow,
+  type Rect,
+} from "machinalayout";
 import type { AriadneScreenDto, AppManifest, ShellState } from "./types";
 
 export type LeviathanViewData = {
@@ -29,6 +37,43 @@ const root = (rootRect: Rect): LayoutRow => ({
   arrange: { kind: "stack", axis: "vertical" },
   debugLabel: `Leviathan shell ${rootRect.width}x${rootRect.height}`,
 });
+
+const rustContentGap = 12;
+const rustContentPadding = 16;
+
+function buildRustShellRows(rootRect: Rect, navHeight: number, inspectorHeight: number, wide: boolean): LayoutRow[] {
+  return [
+    root(rootRect),
+    {
+      id: "nav-bar",
+      parent: "root",
+      frame: { kind: "fixed", width: rootRect.width, height: navHeight },
+      debugLabel: "Navigation dispatch bar",
+    },
+    {
+      id: "rust-content",
+      parent: "root",
+      frame: { kind: "fill", weight: 1, cross: "fill" },
+      arrange: {
+        kind: "stack",
+        axis: wide ? "horizontal" : "vertical",
+        gap: rustContentGap,
+        padding: rustContentPadding,
+      },
+      debugLabel: "RustSimulator Machina content",
+    },
+    ...(inspectorHeight > 0
+      ? [
+          {
+            id: "debug-inspector",
+            parent: "root",
+            frame: { kind: "fixed" as const, width: rootRect.width, height: inspectorHeight },
+            debugLabel: "Rust shell debug inspector region",
+          },
+        ]
+      : []),
+  ];
+}
 
 export function buildAppsLayout(rootRect: Rect, inspectorEnabled = false): {
   rows: LayoutRow[];
@@ -79,31 +124,31 @@ export function buildRustSimulatorLayout(
 ): { rows: LayoutRow[]; viewData: LeviathanViewData } {
   const wide = rootRect.width >= 860;
   const navHeight = rootRect.width >= 640 ? 76 : 96;
-  const contentHeight = Math.max(360, rootRect.height - navHeight);
+  const inspectorHeight = inspectorEnabled ? Math.min(320, Math.max(230, rootRect.height * 0.36)) : 0;
+  const shellRows = buildRustShellRows(rootRect, navHeight, inspectorHeight, wide);
+  const shellLayout = resolveLayoutRows(shellRows, rootRect);
+  const rootMetrics = getStackMainAxisMetrics(shellLayout, "root");
+  const contentRect = getRemainingStackRect(shellLayout, {
+    parentId: "root",
+    afterChildren: ["nav-bar"],
+    beforeChildren: inspectorHeight > 0 ? ["debug-inspector"] : undefined,
+  });
+  const contentStackRect = getStackContentRect(shellLayout, "rust-content");
+  const contentAreaRect = getArrangeContentRect(contentRect, {
+    kind: "stack",
+    axis: wide ? "horizontal" : "vertical",
+    gap: rustContentGap,
+    padding: rustContentPadding,
+  });
+  const contentHeight = rootMetrics.childMetrics.find((child) => child.id === "rust-content")?.mainSize ?? contentRect.height;
+  const contentChromeHeight = contentRect.height - contentStackRect.height;
   const narrowPanelHeight = Math.min(360, Math.max(300, Math.round(rootRect.height * 0.42)));
-  const sidePanelWidth = Math.max(288, rootRect.width - 32);
+  const sidePanelWidth = Math.max(288, contentAreaRect.width);
   return {
     rows: [
-      root(rootRect),
-      {
-        id: "nav-bar",
-        parent: "root",
-        frame: { kind: "fixed", width: rootRect.width, height: navHeight },
-        view: "navBar",
-        debugLabel: "Navigation dispatch bar",
-      },
-      {
-        id: "rust-content",
-        parent: "root",
-        frame: { kind: "fill", weight: 1, cross: "fill" },
-        arrange: {
-          kind: "stack",
-          axis: wide ? "horizontal" : "vertical",
-          gap: 12,
-          padding: 16,
-        },
-        debugLabel: "RustSimulator Machina content",
-      },
+      shellRows[0],
+      { ...shellRows[1], view: "navBar" },
+      shellRows[2],
       {
         id: "transcript",
         parent: "rust-content",
@@ -115,7 +160,7 @@ export function buildRustSimulatorLayout(
         id: "side-panel",
         parent: "rust-content",
         frame: wide
-          ? { kind: "fixed", width: 360, height: contentHeight - 32 }
+          ? { kind: "fixed", width: 360, height: Math.max(300, contentHeight - contentChromeHeight) }
           : { kind: "fixed", width: sidePanelWidth, height: narrowPanelHeight },
         arrange: { kind: "stack", axis: "vertical", gap: 12 },
         debugLabel: "Prompt and debug",
@@ -143,7 +188,7 @@ export function buildRustSimulatorLayout(
             {
               id: "debug-inspector",
               parent: "root",
-              frame: { kind: "fixed" as const, width: rootRect.width, height: Math.min(320, Math.max(230, rootRect.height * 0.36)) },
+              frame: { kind: "fixed" as const, width: rootRect.width, height: inspectorHeight },
               view: "debugInspector",
               debugLabel: "M2 debug layout/state inspector",
             },

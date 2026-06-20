@@ -315,6 +315,20 @@ Reason:
 4. Add a parallel Machina screen catalog for Scheduling fixtures and live-screen metadata without replacing current runtime route resolution yet.
 5. Revisit debug overlay / phone inspector ergonomics only after deciding whether Leviathan keeps a docked inspector panel, switches to Machina overlay mode, or supports both.
 
+## M26A follow-up
+
+M26A adopted the low-risk 0.3.0 helpers only:
+
+- Scheduling layout and RustSimulator shell math now query resolved stack geometry instead of carrying local `- 32` remaining-rect arithmetic.
+- Playwright snapshot metadata now expands from Machina screen + viewport helpers while preserving the existing legacy snapshot names and handoff artifact folders.
+
+Still deferred to M26B:
+
+- DOM summary migration to `summarizeMachinaDom`
+- handoff manifest writing migration to `writeMachinaHandoffBundle`
+- any handoff JSON shape or artifact naming changes
+- broader screen catalog conventions beyond the snapshot metadata layer
+
 ## Remaining upstream gaps
 
 - no upstream Playwright/browser runner;
