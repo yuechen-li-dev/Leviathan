@@ -33,14 +33,14 @@ test.describe("Scheduling real backend smoke", () => {
     );
     await expect(page.getByRole("button", { name: /Inspector/ })).toHaveCount(0);
 
-    await page.getByTestId("setup-create-provider").click();
-    await expect(page.getByText(/Provider: /)).toBeVisible({ timeout: 30_000 });
-    await page.getByTestId("setup-create-resource").click();
-    await expect(page.getByText(/Resource: /)).toBeVisible({ timeout: 30_000 });
-    await page.getByTestId("setup-create-service").click();
-    await expect(page.getByText(/Service: /)).toBeVisible({ timeout: 30_000 });
-    await page.getByTestId("setup-create-availability").click();
-    await expect(page.getByText(/Availability rule: /)).toBeVisible({ timeout: 30_000 });
+    await clickAction(page, "setup-create-provider");
+    await expect(page.getByTestId("setup-provider-entity")).toBeVisible({ timeout: 30_000 });
+    await clickAction(page, "setup-create-resource");
+    await expect(page.getByTestId("setup-resource-entity")).toBeVisible({ timeout: 30_000 });
+    await clickAction(page, "setup-create-service");
+    await expect(page.getByTestId("setup-service-entity")).toBeVisible({ timeout: 30_000 });
+    await clickAction(page, "setup-create-availability");
+    await expect(page.getByTestId("setup-availability-entity")).toBeVisible({ timeout: 30_000 });
 
     await captureLeviathanUiHandoffBundle(page, testInfo, {
       name: "real-provider-setup-created",

@@ -20,10 +20,13 @@ describe("screen catalog", () => {
       "scheduling-landing-tablet",
       "scheduling-landing-phone",
       "provider-setup-desktop",
+      "provider-setup-phone",
       "public-booking-desktop",
       "public-booking-tablet",
       "public-booking-phone",
       "booking-confirmation-desktop",
+      "booking-confirmation-tablet",
+      "booking-confirmation-phone",
       "cancelled-rescheduled-desktop",
       "payment-required-desktop",
       "notification-summary-desktop",
@@ -67,6 +70,29 @@ describe("screen catalog", () => {
       legacyArtifactBaseName: "public-booking",
       debugOverlayMode: "nonInteractiveOverlay",
       taskKey: "public-booking__phone",
+    });
+  });
+
+  it("tracks provider setup through the new guided setup regions", () => {
+    const screen = getLeviathanScreen("provider-setup");
+    const metadata = getLeviathanScreenMetadata(screen);
+    const phoneTask = createLeviathanScreenTasks().find((entry) => entry.key === "provider-setup__phone");
+
+    expect(metadata).toMatchObject({
+      artifactBaseName: "provider-setup",
+      expectedNodeIds: expect.arrayContaining([
+        "provider-setup-root",
+        "provider-setup-hero",
+        "provider-setup-warning",
+        "provider-setup-steps",
+        "provider-setup-form",
+        "provider-setup-preview",
+        "provider-setup-result",
+      ]),
+    });
+    expect(phoneTask).toMatchObject({
+      artifactBaseName: "provider-setup__phone",
+      tags: ["scheduling", "fixture", "mocked", "setup", "phone", "mobile"],
     });
   });
 

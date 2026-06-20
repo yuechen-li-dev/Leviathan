@@ -17,6 +17,18 @@ const bookingScenario = resolveSchedulingFixtureScenario({
   pathname: "/book/demo-provider",
   search: "?fixture=public-booking",
 } as Location);
+const setupScenario = resolveSchedulingFixtureScenario({
+  pathname: "/apps/scheduling/setup",
+  search: "?fixture=provider-setup",
+} as Location);
+const confirmationScenario = resolveSchedulingFixtureScenario({
+  pathname: "/book/demo-provider/confirmed/book_demo_confirmed",
+  search: "?fixture=booking-confirmation",
+} as Location);
+const bookingsScenario = resolveSchedulingFixtureScenario({
+  pathname: "/apps/scheduling/bookings",
+  search: "?fixture=notification-summary",
+} as Location);
 
 function fixedFrame(
   rows: ReturnType<typeof buildSchedulingLayout>["rows"],
@@ -68,6 +80,24 @@ describe("scheduling layout geometry", () => {
         "booking-footer-summary",
       ]),
     );
+  });
+
+  it("adds explicit provider setup regions for the guided setup surface", () => {
+    const rootRect = { x: 0, y: 0, width: 1440, height: 1024 };
+    const { rows } = buildSchedulingLayout(rootRect, setupScenario, false);
+
+    expect(rows.map((row) => row.id)).toEqual(
+      expect.arrayContaining([
+        "provider-setup-root",
+        "provider-setup-hero",
+        "provider-setup-warning",
+        "provider-setup-steps",
+        "provider-setup-form",
+        "provider-setup-preview",
+        "provider-setup-result",
+      ]),
+    );
+    expect(() => resolveLayoutRows(rows, rootRect)).not.toThrow();
   });
 
   it("resolves the public booking layout without Machina overflow", () => {
@@ -137,5 +167,36 @@ describe("scheduling layout geometry", () => {
     expect(buildSchedulingLayout(rootRect, bookingScenario, false).rows.map((row) => row.id)).toContain("booking-root-vertical");
     expect(() => resolveLayoutRows(rows, rootRect)).not.toThrow();
     expect(() => resolveLayoutRows(buildSchedulingLayout(rootRect, bookingScenario, false).rows, rootRect)).not.toThrow();
+  });
+
+  it("adds explicit Machina booking status regions for confirmation surfaces", () => {
+    const rootRect = { x: 0, y: 0, width: 1440, height: 1024 };
+    const { rows } = buildSchedulingLayout(rootRect, confirmationScenario, false);
+
+    expect(rows.map((row) => row.id)).toEqual(
+      expect.arrayContaining([
+        "booking-status-root",
+        "booking-status-hero",
+        "booking-status-details",
+        "booking-status-next-steps",
+        "booking-status-actions",
+        "booking-status-lifecycle",
+      ]),
+    );
+    expect(() => resolveLayoutRows(rows, rootRect)).not.toThrow();
+  });
+
+  it("adds explicit provider booking status regions for bookings surfaces", () => {
+    const rootRect = { x: 0, y: 0, width: 1440, height: 1024 };
+    const { rows } = buildSchedulingLayout(rootRect, bookingsScenario, false);
+
+    expect(rows.map((row) => row.id)).toEqual(
+      expect.arrayContaining([
+        "provider-bookings-root",
+        "provider-bookings-list",
+        "provider-booking-detail",
+      ]),
+    );
+    expect(() => resolveLayoutRows(rows, rootRect)).not.toThrow();
   });
 });

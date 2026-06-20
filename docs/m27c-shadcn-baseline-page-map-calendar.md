@@ -241,3 +241,11 @@ Recommended next options:
 - mobile public booking polish after shadcn calendar
 - reschedule browser coverage
 - reusable Scheduling component extraction where shadcn usage patterns now repeat
+
+## M27D follow-up note
+
+M27D follows this baseline by tightening the booking confirmation, payment-required, provider bookings, notification summary, and lifecycle/audit UX so the public booking flow ends in a clearer trust moment without changing backend behavior.
+
+See:
+
+- `docs/m27d-booking-confirmation-status-ux.md`

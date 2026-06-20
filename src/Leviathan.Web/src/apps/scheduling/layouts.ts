@@ -89,19 +89,194 @@ export const buildSchedulingLayout = (
   });
   const sidebarWidth = Math.min(420, Math.max(320, Math.round(rootRect.width * 0.31)));
   const narrowSidebarHeight = Math.max(160, Math.min(280, Math.round(contentRect.height * 0.38)));
+  const mainWidth = wide ? Math.max(340, contentAreaRect.width - sidebarWidth - schedulingContentGap) : Math.max(320, contentAreaRect.width);
+  const mainHeight = wide ? Math.max(260, contentStackRect.height) : Math.max(260, contentAreaRect.height - narrowSidebarHeight - schedulingContentGap);
+  const confirmationHeroHeight = Math.max(64, Math.min(96, Math.round(mainHeight * 0.16)));
+  const confirmationDetailsHeight = Math.max(80, Math.min(120, Math.round(mainHeight * 0.22)));
+  const confirmationNextStepsHeight = Math.max(72, Math.min(96, Math.round(mainHeight * 0.18)));
+  const confirmationActionsHeight = Math.max(64, Math.min(84, Math.round(mainHeight * 0.14)));
+  const confirmationGap = 12;
+  const confirmationDetailsY = confirmationHeroHeight + confirmationGap;
+  const confirmationNextStepsY = confirmationDetailsY + confirmationDetailsHeight + confirmationGap;
+  const confirmationActionsY = confirmationNextStepsY + confirmationNextStepsHeight + confirmationGap;
+  const confirmationLifecycleY = confirmationActionsY + confirmationActionsHeight + confirmationGap;
+  const confirmationLifecycleHeight = Math.max(60, mainHeight - confirmationLifecycleY);
+  const providerListHeight = Math.max(240, Math.round(mainHeight * 0.52));
+  const providerDetailHeight = Math.max(220, mainHeight - providerListHeight - 16);
+  const setupWide = rootRect.width >= 1180;
+  const setupGap = 16;
+  const setupHeroHeight = Math.max(80, Math.min(112, Math.round(mainHeight * 0.14)));
+  const setupWarningHeight = Math.max(72, Math.min(104, Math.round(mainHeight * 0.14)));
+  const setupStepsHeight = Math.max(120, Math.min(180, Math.round(mainHeight * 0.2)));
+  const setupBodyY = setupHeroHeight + setupGap + setupWarningHeight + setupGap + setupStepsHeight + setupGap;
+  const setupBodyHeight = Math.max(220, mainHeight - setupBodyY);
+  const setupFormWidth = setupWide ? Math.max(360, Math.round((mainWidth - setupGap) * 0.62)) : mainWidth;
+  const setupPreviewWidth = setupWide ? Math.max(280, mainWidth - setupFormWidth - setupGap) : mainWidth;
+  const setupPreviewHeight = setupWide ? Math.max(160, Math.round(setupBodyHeight * 0.48)) : Math.max(180, Math.round(setupBodyHeight * 0.28));
+  const setupResultHeight = setupWide ? Math.max(140, setupBodyHeight - setupPreviewHeight - setupGap) : Math.max(180, Math.round(setupBodyHeight * 0.26));
+  const setupFormHeight = setupWide ? setupBodyHeight : Math.max(340, setupBodyHeight - setupPreviewHeight - setupResultHeight - setupGap * 2);
+  const setupPreviewY = setupWide ? setupBodyY : setupBodyY + setupFormHeight + setupGap;
+  const setupResultY = setupWide ? setupPreviewY + setupPreviewHeight + setupGap : setupPreviewY + setupPreviewHeight + setupGap;
+
+  const mainSurfaceRows =
+    scenario.surface === "setup"
+      ? [
+          {
+            id: "scheduling-main",
+            parent: "scheduling-content",
+            frame: { kind: "fill" as const, weight: wide ? 5 : 1, cross: "fill" as const },
+            arrange: { kind: "stack" as const, axis: "vertical" as const, gap: 12, padding: 0 },
+            debugLabel: `${scenario.surface} main surface`,
+          },
+          {
+            id: "provider-setup-root",
+            parent: "scheduling-main",
+            frame: { kind: "fixed" as const, width: mainWidth, height: mainHeight },
+            view: "schedulingMain",
+            debugLabel: "Provider setup root",
+          },
+          {
+            id: "provider-setup-hero",
+            parent: "provider-setup-root",
+            frame: { kind: "absolute" as const, x: 0, y: 0, width: mainWidth, height: setupHeroHeight },
+            debugLabel: "Provider setup hero",
+          },
+          {
+            id: "provider-setup-warning",
+            parent: "provider-setup-root",
+            frame: { kind: "absolute" as const, x: 0, y: setupHeroHeight + setupGap, width: mainWidth, height: setupWarningHeight },
+            debugLabel: "Provider setup warning",
+          },
+          {
+            id: "provider-setup-steps",
+            parent: "provider-setup-root",
+            frame: { kind: "absolute" as const, x: 0, y: setupHeroHeight + setupGap + setupWarningHeight + setupGap, width: mainWidth, height: setupStepsHeight },
+            debugLabel: "Provider setup steps",
+          },
+          {
+            id: "provider-setup-form",
+            parent: "provider-setup-root",
+            frame: { kind: "absolute" as const, x: 0, y: setupBodyY, width: setupFormWidth, height: setupFormHeight },
+            debugLabel: "Provider setup form",
+          },
+          {
+            id: "provider-setup-preview",
+            parent: "provider-setup-root",
+            frame: {
+              kind: "absolute" as const,
+              x: setupWide ? setupFormWidth + setupGap : 0,
+              y: setupPreviewY,
+              width: setupPreviewWidth,
+              height: setupPreviewHeight,
+            },
+            debugLabel: "Provider setup preview",
+          },
+          {
+            id: "provider-setup-result",
+            parent: "provider-setup-root",
+            frame: {
+              kind: "absolute" as const,
+              x: setupWide ? setupFormWidth + setupGap : 0,
+              y: setupResultY,
+              width: setupPreviewWidth,
+              height: setupResultHeight,
+            },
+            debugLabel: "Provider setup result",
+          },
+        ]
+      : scenario.surface === "confirmation"
+      ? [
+          {
+            id: "scheduling-main",
+            parent: "scheduling-content",
+            frame: { kind: "fill" as const, weight: wide ? 5 : 1, cross: "fill" as const },
+            arrange: { kind: "stack" as const, axis: "vertical" as const, gap: 12, padding: 0 },
+            debugLabel: `${scenario.surface} main surface`,
+          },
+          {
+            id: "booking-status-root",
+            parent: "scheduling-main",
+            frame: { kind: "fixed" as const, width: mainWidth, height: mainHeight },
+            view: "schedulingMain",
+            debugLabel: "Booking status root",
+          },
+          {
+            id: "booking-status-hero",
+            parent: "booking-status-root",
+            frame: { kind: "absolute" as const, x: 0, y: 0, width: mainWidth, height: confirmationHeroHeight },
+            debugLabel: "Booking status hero",
+          },
+          {
+            id: "booking-status-details",
+            parent: "booking-status-root",
+            frame: { kind: "absolute" as const, x: 0, y: confirmationDetailsY, width: mainWidth, height: confirmationDetailsHeight },
+            debugLabel: "Booking status details",
+          },
+          {
+            id: "booking-status-next-steps",
+            parent: "booking-status-root",
+            frame: { kind: "absolute" as const, x: 0, y: confirmationNextStepsY, width: mainWidth, height: confirmationNextStepsHeight },
+            debugLabel: "Booking status next steps",
+          },
+          {
+            id: "booking-status-actions",
+            parent: "booking-status-root",
+            frame: { kind: "absolute" as const, x: 0, y: confirmationActionsY, width: mainWidth, height: confirmationActionsHeight },
+            debugLabel: "Booking status actions",
+          },
+          {
+            id: "booking-status-lifecycle",
+            parent: "booking-status-root",
+            frame: { kind: "absolute" as const, x: 0, y: confirmationLifecycleY, width: mainWidth, height: confirmationLifecycleHeight },
+            debugLabel: "Booking status lifecycle",
+          },
+        ]
+      : scenario.surface === "bookings"
+        ? [
+            {
+              id: "scheduling-main",
+              parent: "scheduling-content",
+              frame: { kind: "fill" as const, weight: wide ? 5 : 1, cross: "fill" as const },
+              arrange: { kind: "stack" as const, axis: "vertical" as const, gap: 16, padding: 0 },
+              debugLabel: `${scenario.surface} main surface`,
+            },
+            {
+              id: "provider-bookings-root",
+              parent: "scheduling-main",
+              frame: { kind: "fixed" as const, width: mainWidth, height: mainHeight },
+              view: "schedulingMain",
+              arrange: { kind: "stack" as const, axis: "vertical" as const, gap: 16, padding: 0 },
+              debugLabel: "Provider bookings root",
+            },
+            {
+              id: "provider-bookings-list",
+              parent: "provider-bookings-root",
+              frame: { kind: "fixed" as const, width: mainWidth, height: providerListHeight },
+              debugLabel: "Provider bookings list",
+            },
+            {
+              id: "provider-booking-detail",
+              parent: "provider-bookings-root",
+              frame: { kind: "fixed" as const, width: mainWidth, height: providerDetailHeight },
+              debugLabel: "Provider booking detail",
+            },
+          ]
+        : [
+            {
+              id: "scheduling-main",
+              parent: "scheduling-content",
+              frame: { kind: "fill" as const, weight: wide ? 5 : 1, cross: "fill" as const },
+              view: "schedulingMain",
+              debugLabel: `${scenario.surface} main surface`,
+            },
+          ];
 
   return {
     rows: [
       shellRows[0],
       { ...shellRows[1], view: "schedulingHero", debugLabel: `Scheduling hero ${scenario.key}` },
       shellRows[2],
-      {
-        id: "scheduling-main",
-        parent: "scheduling-content",
-        frame: { kind: "fill", weight: wide ? 5 : 1, cross: "fill" },
-        view: "schedulingMain",
-        debugLabel: `${scenario.surface} main surface`,
-      },
+      ...mainSurfaceRows,
       {
         id: "scheduling-sidebar",
         parent: "scheduling-content",

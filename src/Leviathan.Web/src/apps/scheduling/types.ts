@@ -64,6 +64,10 @@ export type Booking = {
   serviceId?: EntityId;
   resourceId?: EntityId;
   status: string;
+  createdAt?: string;
+  updatedAt?: string;
+  confirmedAt?: string | null;
+  cancelledAt?: string | null;
   customer: { name: string; email: string; phone?: string; notes?: string };
   range?: { startsAtUtc: string; endsAtUtc: string; timeZoneId: string };
   cancellationReasonCode?: string;
@@ -87,6 +91,9 @@ export type BookingAuditEvent = { eventId: string; eventType: string; occurredAt
 export type SchedulingLifecycleSummary = {
   workflowState: string;
   status: string;
+  createdAt?: string | null;
+  confirmedAt?: string | null;
+  cancelledAt?: string | null;
   lastDecisionCode?: string;
   lastAuditEventId?: string;
   checkpointExists?: boolean;

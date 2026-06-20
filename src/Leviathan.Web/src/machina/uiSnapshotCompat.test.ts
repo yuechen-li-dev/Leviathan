@@ -32,7 +32,7 @@ describe("UI snapshot compatibility helpers", () => {
       {
         route: "/apps/scheduling/setup?debug=1&fixture=provider-setup",
         rootIds: ["root"],
-        visibleTextExcerpt: "Provider setup Suggested defaults",
+        visibleTextExcerpt: "Provider setup Set up bookable availability",
         nodes: [
           {
             rootId: "root",
@@ -45,7 +45,7 @@ describe("UI snapshot compatibility helpers", () => {
             className: "shell",
             role: null,
             ariaLabel: null,
-            textExcerpt: "Provider setup Suggested defaults",
+            textExcerpt: "Provider setup Set up bookable availability",
             boundingBox: { x: 0, y: 0, width: 1440, height: 1024 },
           },
           {
@@ -73,7 +73,7 @@ describe("UI snapshot compatibility helpers", () => {
       route: "/apps/scheduling/setup?debug=1&fixture=provider-setup",
       generatedAt: "2026-06-19T00:00:00.000Z",
       rootIds: ["root"],
-      visibleTextExcerpt: "Provider setup Suggested defaults",
+      visibleTextExcerpt: "Provider setup Set up bookable availability",
     });
 
     expect(summary.nodes).toEqual([

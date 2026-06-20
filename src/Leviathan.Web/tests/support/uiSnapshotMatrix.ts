@@ -36,6 +36,8 @@ const taskTextOverrides: Record<string, string> = {
   "public-booking__desktop": "30 min Intro Call",
   "public-booking__tablet": "Friday, May 16",
   "public-booking__phone": "Continue to confirmation",
+  "booking-confirmation__tablet": "What happens next",
+  "booking-confirmation__phone": "Actions",
 };
 
 export function createUiSnapshotCases(): UiSnapshotCase[] {

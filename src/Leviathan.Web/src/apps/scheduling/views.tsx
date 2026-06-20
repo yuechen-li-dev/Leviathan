@@ -9,6 +9,7 @@ import type {
   HoldResponse,
   LocalDevPlatformContext,
   NotificationSummary,
+  Provider,
   ScheduledNotification,
   SchedulingLifecycleSummary,
   SchedulingService,
@@ -21,6 +22,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -185,7 +194,7 @@ function liveRouteLabel() {
 }
 
 function liveRouteTitle() {
-  if (pathname().startsWith("/apps/scheduling/setup")) return "Scheduling setup";
+  if (pathname().startsWith("/apps/scheduling/setup")) return "Provider setup";
   if (pathname().startsWith("/apps/scheduling/bookings")) return "Provider bookings";
   if (pathname().includes("/confirmed/")) return "Booking confirmed";
   if (pathname().startsWith("/book/")) return "Public booking";
@@ -392,9 +401,9 @@ export function SchedulingBookingPageProvider(props: {
       : "Choose a day";
   const timezoneLabel = selectedSlot?.displayTimeZoneId ?? serviceSlots[0]?.displayTimeZoneId ?? providerTimeZone;
   const paymentAlertText = isPaymentRequiredError(errorMessage)
-    ? "Payment is required before confirmation. Use the fake/local satisfy action, then continue to confirmation."
+    ? "This booking requires controlled local/test payment satisfaction before confirmation."
     : hold?.paymentRequirementStatus === "payment_required"
-      ? "Payment is still required before confirmation."
+      ? "This booking still needs controlled local/test payment satisfaction before confirmation."
       : undefined;
   const stepIndex: 0 | 1 | 2 = selectedSlot ? 1 : 0;
 
@@ -509,7 +518,7 @@ export function SchedulingBookingPageProvider(props: {
     ],
     trustNotes: live
       ? ["No account required", "Fake/local payment only. No real provider is connected."]
-      : ["No account required", "You can reschedule later from your confirmation email."],
+      : ["No account required", "Notifications in fixture mode are policy-only, not real sends."],
     selectService: (serviceId) => {
       setSelectedServiceId(serviceId);
       setSelectedSlotKey(undefined);
@@ -607,9 +616,13 @@ export function SchedulingMainView(props: SlotProps) {
         <SchedulingHomeView scenario={scenario} />
       ) : scenario.surface === "setup" ? (
         <ProviderSetupView
+          availabilityRule={scenario.setupAvailabilityRule}
           errorMessage={scenario.errorMessage}
           providerSlug={scenario.providerSlug}
+          provider={scenario.setupProvider}
           providerTimeZone={scenario.providerTimeZone}
+          resource={scenario.setupResource}
+          service={scenario.setupService}
           localDevContext={scenario.localDevContext}
         />
       ) : scenario.surface === "booking" ? (
@@ -1008,7 +1021,7 @@ function BookingIntakeForm({
           type="button"
           variant="secondary"
         >
-          {page.busy === "payment" ? "Satisfying fake/local payment…" : "Satisfy fake/local payment"}
+          {page.busy === "payment" ? "Marking fake/local payment satisfied…" : "Mark fake/local payment satisfied"}
         </Button>
       ) : null}
     </article>
@@ -1240,46 +1253,97 @@ export function BookingMobileConfirmFooterView(props: SlotProps) {
 export function SchedulingHomeView({ scenario }: { scenario: SchedulingFixtureScenario }) {
   return (
     <div className="scheduling-stack">
-      <section className="scheduling-subpanel">
-        <h2>Scheduling landing</h2>
-        <p>
-          Demo-ready local surfaces for provider setup, public booking, booking confirmation, and lifecycle inspection without adding auth, payments,
-          SMS, email, or calendar sync.
-        </p>
-        <AdminModeBanner />
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>Scheduling landing</CardTitle>
+          <CardDescription>Start with provider setup, then move into the public booking demo, provider bookings, and lifecycle verification without adding auth, real payments, or external providers.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <AdminModeBanner />
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle>Setup provider</CardTitle>
+                <CardDescription>Create a bookable provider, resource, service, and availability rule.</CardDescription>
+              </CardHeader>
+              <CardFooter>
+                <Button asChild>
+                  <a href="/apps/scheduling/setup?debug=1&fixture=provider-setup">Open setup demo</a>
+                </Button>
+              </CardFooter>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Public booking demo</CardTitle>
+                <CardDescription>Preview the customer-facing booking page that the generated link will open.</CardDescription>
+              </CardHeader>
+              <CardFooter>
+                <Button asChild variant="secondary">
+                  <a href="/book/demo-provider?debug=1&fixture=public-booking">Open booking demo</a>
+                </Button>
+              </CardFooter>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Provider bookings</CardTitle>
+                <CardDescription>Inspect confirmation, cancellation, notification summary, and audit/lifecycle detail.</CardDescription>
+              </CardHeader>
+              <CardFooter>
+                <Button asChild variant="secondary">
+                  <a href="/apps/scheduling/bookings?debug=1&fixture=cancelled-rescheduled">Open bookings demo</a>
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+        </CardContent>
+      </Card>
 
-      <section className="scheduling-subpanel">
-          <h2>Action cards</h2>
+      <Card>
+        <CardHeader>
+          <CardTitle>Action cards</CardTitle>
+          <CardDescription>Secondary entry points stay available for the other milestone surfaces.</CardDescription>
+        </CardHeader>
+        <CardContent>
           <div className="scheduling-action-grid">
-          {scenario.actions.map((action) => (
-            <article className="card scheduling-action-card" key={action.title}>
-              <h3>{action.title}</h3>
-              <p>{action.body}</p>
-              <a className="scheduling-inline-link" href={action.href}>
-                {action.cta}
-              </a>
-            </article>
-          ))}
-        </div>
-      </section>
+            {scenario.actions.map((action) => (
+              <article className="card scheduling-action-card" key={action.title}>
+                <h3>{action.title}</h3>
+                <p>{action.body}</p>
+                <a className="scheduling-inline-link" href={action.href}>
+                  {action.cta}
+                </a>
+              </article>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
-      <section className="scheduling-subpanel">
-          <h2>Current proof points</h2>
+      <Card>
+        <CardHeader>
+          <CardTitle>Current proof points</CardTitle>
+          <CardDescription>These remain the boundaries for the Scheduling UX passes.</CardDescription>
+        </CardHeader>
+        <CardContent>
           <div className="scheduling-proof-grid">
-          {scenario.proofPoints.map((point) => (
-            <article className="card scheduling-proof-card" key={point}>
-              <p>{point}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+            {scenario.proofPoints.map((point) => (
+              <article className="card scheduling-proof-card" key={point}>
+                <p>{point}</p>
+              </article>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {scenario.localDevContext ? (
-        <section className="scheduling-subpanel">
-          <h2>Unsafe local-dev ownership context</h2>
-          <OwnershipSummary localDevContext={scenario.localDevContext} />
-        </section>
+        <Card>
+          <CardHeader>
+            <CardTitle>Unsafe local-dev ownership context</CardTitle>
+            <CardDescription>The backend still owns installation identity; the UI should not make providers think they need internal ids.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <OwnershipSummary localDevContext={scenario.localDevContext} />
+          </CardContent>
+        </Card>
       ) : null}
     </div>
   );
@@ -1294,68 +1358,685 @@ export function AdminModeBanner({ errorMessage }: { errorMessage?: string }) {
   );
 }
 
+type SetupDraft = {
+  provider: {
+    slug: string;
+    displayName: string;
+    timeZoneId: string;
+    contactEmail: string;
+    publicDescription: string;
+  };
+  resource: {
+    displayName: string;
+    resourceType: string;
+    timeZoneId: string;
+  };
+  service: {
+    name: string;
+    durationMinutes: number;
+    description: string;
+  };
+  availability: {
+    daysOfWeek: string[];
+    timeZoneId: string;
+    localStartTime: string;
+    localEndTime: string;
+  };
+};
+
+type SetupEntities = {
+  provider?: {
+    id: string;
+    slug: string;
+    displayName: string;
+    timeZoneId: string;
+    contactEmail?: string;
+    publicDescription?: string;
+  } | null;
+  resource?: {
+    id: string;
+    displayName: string;
+    resourceType: string;
+    timeZoneId: string;
+  } | null;
+  service?: {
+    id: string;
+    name: string;
+    durationMinutes: number;
+    description?: string;
+    paymentPolicy?: SchedulingService["paymentPolicy"];
+  } | null;
+  availabilityRule?: {
+    id: string;
+    daysOfWeek: string[];
+    timeZoneId: string;
+    localStartTime: string;
+    localEndTime: string;
+  } | null;
+};
+
+type SetupStepKey = "provider" | "resource" | "service" | "availability" | "public-link";
+
+const setupStepLabels: Array<{ key: SetupStepKey; title: string; body: string }> = [
+  { key: "provider", title: "Provider", body: "Create the public-facing provider identity and timezone." },
+  { key: "resource", title: "Resource", body: "Add what can actually be booked so the model stays resource-first." },
+  { key: "service", title: "Service", body: "Create the customer-facing service and attach the local/test policy defaults." },
+  { key: "availability", title: "Availability", body: "Define the simple weekly rule that produces public slots." },
+  { key: "public-link", title: "Public booking link", body: "Open the generated booking page and run a real booking test." },
+];
+
+const weekdayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+
+function createDefaultSetupDraft(providerSlug = "demo-provider", providerTimeZone = browserTimeZone()): SetupDraft {
+  return {
+    provider: {
+      slug: providerSlug,
+      displayName: "Emma Brown",
+      timeZoneId: providerTimeZone,
+      contactEmail: "emma@example.test",
+      publicDescription: "Intro calls and working sessions for local scheduling demos.",
+    },
+    resource: {
+      displayName: "Emma Brown",
+      resourceType: "person",
+      timeZoneId: providerTimeZone,
+    },
+    service: {
+      name: "30 min Intro Call",
+      durationMinutes: 30,
+      description: "A focused introductory meeting to discuss goals, constraints, and next steps.",
+    },
+    availability: {
+      daysOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+      timeZoneId: providerTimeZone,
+      localStartTime: "09:00",
+      localEndTime: "17:00",
+    },
+  };
+}
+
+function setupEntitiesFromValues(values: {
+  provider?: Provider | null;
+  resource?: BookableResource | null;
+  service?: SchedulingService | null;
+  availabilityRule?: AvailabilityRule | null;
+}): SetupEntities {
+  return {
+    provider: values.provider
+      ? {
+          id: values.provider.id.value,
+          slug: values.provider.slug,
+          displayName: values.provider.displayName,
+          timeZoneId: values.provider.timeZoneId,
+          contactEmail: values.provider.contactEmail,
+          publicDescription: values.provider.publicDescription,
+        }
+      : null,
+    resource: values.resource
+      ? {
+          id: values.resource.id.value,
+          displayName: values.resource.displayName,
+          resourceType: values.resource.resourceType,
+          timeZoneId: values.resource.timeZoneId,
+        }
+      : null,
+    service: values.service
+      ? {
+          id: values.service.id.value,
+          name: values.service.name,
+          durationMinutes: values.service.durationMinutes,
+          description: values.service.description,
+          paymentPolicy: values.service.paymentPolicy,
+        }
+      : null,
+    availabilityRule: values.availabilityRule
+      ? {
+          id: values.availabilityRule.id.value,
+          daysOfWeek: values.availabilityRule.daysOfWeek,
+          timeZoneId: values.availabilityRule.timeZoneId,
+          localStartTime: values.availabilityRule.localStartTime,
+          localEndTime: values.availabilityRule.localEndTime,
+        }
+      : null,
+  };
+}
+
+function setupStepState(step: SetupStepKey, entities: SetupEntities) {
+  if (step === "provider") return entities.provider ? "complete" : "current";
+  if (step === "resource") return entities.resource ? "complete" : entities.provider ? "current" : "upcoming";
+  if (step === "service") return entities.service ? "complete" : entities.resource ? "current" : "upcoming";
+  if (step === "availability") return entities.availabilityRule ? "complete" : entities.service ? "current" : "upcoming";
+  return entities.availabilityRule && entities.provider ? "current" : "upcoming";
+}
+
+function availabilitySummary(rule: SetupEntities["availabilityRule"]) {
+  if (!rule) return "Pending";
+  return `${rule.daysOfWeek.join(", ")} · ${rule.localStartTime}-${rule.localEndTime} · ${rule.timeZoneId}`;
+}
+
+function setupLinkState(providerSlug: string, ready: boolean) {
+  return {
+    previewPath: `/book/${providerSlug}`,
+    heading: ready ? "Your public booking page is ready" : "Your public booking page will appear here",
+    body: ready
+      ? "Open the generated booking page and test the same public flow customers will use."
+      : "Create the provider, resource, service, and availability rule first. The preview path below shows where the booking page will live.",
+  };
+}
+
+function SetupProgressBadge({ state }: { state: "complete" | "current" | "upcoming" }) {
+  return (
+    <Badge variant={state === "complete" ? "default" : state === "current" ? "secondary" : "outline"}>
+      {state === "complete" ? "Done" : state === "current" ? "Next" : "Pending"}
+    </Badge>
+  );
+}
+
+function SetupChecklist({ entities }: { entities: SetupEntities }) {
+  return (
+    <Card data-testid="provider-setup-steps">
+      <CardHeader>
+        <CardTitle>Setup checklist</CardTitle>
+        <CardDescription>Follow these five steps in order. The next required action stays highlighted.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {setupStepLabels.map((step, index) => {
+          const state = setupStepState(step.key, entities);
+          return (
+            <div className="flex items-start justify-between gap-4 rounded-lg border p-3" key={step.key}>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">{index + 1}</Badge>
+                  <p className="font-medium">{step.title}</p>
+                </div>
+                <p className="text-sm text-muted-foreground">{step.body}</p>
+              </div>
+              <SetupProgressBadge state={state} />
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SetupEntitySummary({ entities }: { entities: SetupEntities }) {
+  return (
+    <Card data-testid="provider-setup-result">
+      <CardHeader>
+        <CardTitle>Current setup summary</CardTitle>
+        <CardDescription>These are the exact backend entities currently driving the booking surface.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="rounded-lg border p-3">
+          {entities.provider ? (
+            <p data-testid="setup-provider-entity">Provider: {entities.provider.id}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Provider not created yet.</p>
+          )}
+          {entities.provider ? <p className="text-sm text-muted-foreground">{entities.provider.displayName} · {entities.provider.slug} · {entities.provider.timeZoneId}</p> : null}
+        </div>
+        <div className="rounded-lg border p-3">
+          {entities.resource ? (
+            <p data-testid="setup-resource-entity">Resource: {entities.resource.id}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Resource not created yet.</p>
+          )}
+          {entities.resource ? <p className="text-sm text-muted-foreground">{entities.resource.displayName} · {entities.resource.resourceType} · {entities.resource.timeZoneId}</p> : null}
+        </div>
+        <div className="rounded-lg border p-3">
+          {entities.service ? (
+            <p data-testid="setup-service-entity">Service: {entities.service.id}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Service not created yet.</p>
+          )}
+          {entities.service ? <p className="text-sm text-muted-foreground">{entities.service.name} · {entities.service.durationMinutes} min</p> : null}
+        </div>
+        <div className="rounded-lg border p-3">
+          {entities.availabilityRule ? (
+            <p data-testid="setup-availability-entity">Availability rule: {entities.availabilityRule.id}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Availability rule not created yet.</p>
+          )}
+          {entities.availabilityRule ? <p className="text-sm text-muted-foreground">{availabilitySummary(entities.availabilityRule)}</p> : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SetupResultCard({
+  providerSlug,
+  entities,
+  publicLink,
+  copyStatus,
+  onCopyLink,
+}: {
+  providerSlug: string;
+  entities: SetupEntities;
+  publicLink?: string | null;
+  copyStatus?: string | null;
+  onCopyLink?: (() => void) | undefined;
+}) {
+  const ready = !!(entities.provider && entities.resource && entities.service && entities.availabilityRule && publicLink);
+  const linkState = setupLinkState(providerSlug, ready);
+  const servicePaymentLabel =
+    entities.service?.paymentPolicy?.requiresPrepay || entities.service?.paymentPolicy?.requiresDeposit
+      ? "Payment required by local/test policy"
+      : "No payment required";
+
+  return (
+    <Card data-testid="provider-setup-preview">
+      <CardHeader>
+        <CardTitle>{linkState.heading}</CardTitle>
+        <CardDescription>{linkState.body}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-lg border p-3">
+          <p className="text-sm font-medium">Public booking link</p>
+          {publicLink ? (
+            <a className="scheduling-inline-link break-all" data-testid="setup-public-link" href={publicLink}>
+              {publicLink}
+            </a>
+          ) : (
+            <code>{linkState.previewPath}</code>
+          )}
+        </div>
+
+        <div className="rounded-lg border p-3">
+          <p className="text-sm font-medium">What customers will see</p>
+          <ul className="scheduling-checklist scheduling-checklist-tight">
+            <li>Provider: {entities.provider?.displayName ?? "Pending provider"}</li>
+            <li>Resource: {entities.resource?.displayName ?? "Pending resource"}</li>
+            <li>Service: {entities.service ? `${entities.service.name} (${entities.service.durationMinutes} min)` : "Pending service"}</li>
+            <li>Availability: {availabilitySummary(entities.availabilityRule)}</li>
+            <li>{servicePaymentLabel}</li>
+          </ul>
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          {publicLink ? (
+            <Button asChild data-testid="setup-open-booking-page">
+              <a href={publicLink}>Open booking page</a>
+            </Button>
+          ) : (
+            <Button disabled type="button">
+              Open booking page
+            </Button>
+          )}
+          {publicLink ? (
+            <Button asChild data-testid="setup-preview-booking-flow" variant="secondary">
+              <a href={publicLink}>Preview booking flow</a>
+            </Button>
+          ) : (
+            <Button disabled type="button" variant="secondary">
+              Preview booking flow
+            </Button>
+          )}
+          <Button data-testid="setup-copy-link" disabled={!publicLink || !onCopyLink} onClick={onCopyLink} type="button" variant="outline">
+            {copyStatus ?? "Copy link"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SetupSectionCard(props: {
+  title: string;
+  description: string;
+  stepNumber: number;
+  status: "complete" | "current" | "upcoming";
+  testId: string;
+  children: ReactNode;
+  action?: ReactNode;
+  helper?: ReactNode;
+}) {
+  return (
+    <Card data-testid={props.testId}>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{props.stepNumber}</Badge>
+              <CardTitle>{props.title}</CardTitle>
+            </div>
+            <CardDescription>{props.description}</CardDescription>
+          </div>
+          <SetupProgressBadge state={props.status} />
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {props.helper}
+        {props.children}
+      </CardContent>
+      {props.action ? <CardFooter>{props.action}</CardFooter> : null}
+    </Card>
+  );
+}
+
+function ProviderSetupFlow(props: {
+  errorMessage?: string;
+  localDevContext?: LocalDevPlatformContext;
+  draft: SetupDraft;
+  entities: SetupEntities;
+  publicLink?: string | null;
+  modeLabel: string;
+  copyStatus?: string | null;
+  onCopyLink?: () => void;
+  onProviderFieldChange?: (field: keyof SetupDraft["provider"], value: string) => void;
+  onResourceFieldChange?: (field: keyof SetupDraft["resource"], value: string) => void;
+  onServiceFieldChange?: (field: keyof SetupDraft["service"], value: string | number) => void;
+  onAvailabilityFieldChange?: (field: keyof SetupDraft["availability"], value: string | string[]) => void;
+  onToggleAvailabilityDay?: (day: string) => void;
+  actionButtons?: {
+    provider?: ReactNode;
+    resource?: ReactNode;
+    service?: ReactNode;
+    availability?: ReactNode;
+  };
+}) {
+  const providerState = setupStepState("provider", props.entities);
+  const resourceState = setupStepState("resource", props.entities);
+  const serviceState = setupStepState("service", props.entities);
+  const availabilityState = setupStepState("availability", props.entities);
+
+  return (
+    <div className="scheduling-stack" data-testid="provider-setup-root">
+      <Card data-testid="provider-setup-hero">
+        <CardHeader>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{props.modeLabel}</Badge>
+            <Badge variant="secondary">Guided setup</Badge>
+            <Badge variant="outline">Resource-first</Badge>
+          </div>
+          <CardTitle>Set up bookable availability</CardTitle>
+          <CardDescription>Create a provider, resource, service, and availability rule, then open the public booking page and test the flow.</CardDescription>
+        </CardHeader>
+      </Card>
+
+      <div data-testid="provider-setup-warning">
+        <AdminModeBanner errorMessage={props.errorMessage} />
+      </div>
+
+      {props.localDevContext ? (
+        <div className="rounded-lg border bg-muted/30 p-4">
+          <p className="mb-2 text-sm font-medium">Unsafe local-dev ownership context</p>
+          <p className="mb-3 text-sm text-muted-foreground">Ownership still comes from the backend. This keeps the setup path honest without asking providers to learn internal ids.</p>
+          <OwnershipSummary localDevContext={props.localDevContext} />
+        </div>
+      ) : null}
+
+      {props.errorMessage && !isUnsafeAdminError(props.errorMessage) ? (
+        <Alert variant="destructive">
+          <AlertTitle>Setup error</AlertTitle>
+          <AlertDescription>{controlledSchedulingError(props.errorMessage)}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]" data-testid="provider-setup-form">
+        <div className="space-y-6">
+          <SetupChecklist entities={props.entities} />
+
+          <SetupSectionCard
+            action={props.actionButtons?.provider}
+            description="Give the public booking page a human-readable provider identity and timezone."
+            status={providerState}
+            stepNumber={1}
+            testId="provider-form-card"
+            title="Provider"
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="setup-provider-name">Provider name</Label>
+                <Input
+                  disabled={!props.onProviderFieldChange || !!props.entities.provider}
+                  id="setup-provider-name"
+                  onChange={(event) => props.onProviderFieldChange?.("displayName", event.target.value)}
+                  value={props.draft.provider.displayName}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="setup-provider-slug">Public slug</Label>
+                <Input
+                  disabled={!props.onProviderFieldChange || !!props.entities.provider}
+                  id="setup-provider-slug"
+                  onChange={(event) => props.onProviderFieldChange?.("slug", event.target.value)}
+                  value={props.draft.provider.slug}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="setup-provider-timezone">Timezone</Label>
+                <Input
+                  disabled={!props.onProviderFieldChange || !!props.entities.provider}
+                  id="setup-provider-timezone"
+                  onChange={(event) => props.onProviderFieldChange?.("timeZoneId", event.target.value)}
+                  value={props.draft.provider.timeZoneId}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="setup-provider-email">Contact email</Label>
+                <Input
+                  disabled={!props.onProviderFieldChange || !!props.entities.provider}
+                  id="setup-provider-email"
+                  onChange={(event) => props.onProviderFieldChange?.("contactEmail", event.target.value)}
+                  value={props.draft.provider.contactEmail}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="setup-provider-description">Short public description</Label>
+              <Textarea
+                disabled={!props.onProviderFieldChange || !!props.entities.provider}
+                id="setup-provider-description"
+                onChange={(event) => props.onProviderFieldChange?.("publicDescription", event.target.value)}
+                value={props.draft.provider.publicDescription}
+              />
+            </div>
+          </SetupSectionCard>
+
+          <SetupSectionCard
+            action={props.actionButtons?.resource}
+            description="Explain the resource-first model in product language instead of backend jargon."
+            helper={
+              <Alert>
+                <AlertTitle>Resources are what can be booked</AlertTitle>
+                <AlertDescription>A resource can be a person, room, device, or service capacity. Services become bookable after they are attached to a resource.</AlertDescription>
+              </Alert>
+            }
+            status={resourceState}
+            stepNumber={2}
+            testId="resource-form-card"
+            title="Resource"
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="setup-resource-name">Resource name</Label>
+                <Input
+                  disabled={!props.onResourceFieldChange || !props.entities.provider || !!props.entities.resource}
+                  id="setup-resource-name"
+                  onChange={(event) => props.onResourceFieldChange?.("displayName", event.target.value)}
+                  value={props.draft.resource.displayName}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="setup-resource-type">Resource type</Label>
+                <Input
+                  disabled={!props.onResourceFieldChange || !props.entities.provider || !!props.entities.resource}
+                  id="setup-resource-type"
+                  onChange={(event) => props.onResourceFieldChange?.("resourceType", event.target.value)}
+                  value={props.draft.resource.resourceType}
+                />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="setup-resource-timezone">Timezone</Label>
+                <Input
+                  disabled={!props.onResourceFieldChange || !props.entities.provider || !!props.entities.resource}
+                  id="setup-resource-timezone"
+                  onChange={(event) => props.onResourceFieldChange?.("timeZoneId", event.target.value)}
+                  value={props.draft.resource.timeZoneId}
+                />
+              </div>
+            </div>
+          </SetupSectionCard>
+
+          <SetupSectionCard
+            action={props.actionButtons?.service}
+            description="Keep the service customer-facing and honest about local/test policy behavior."
+            helper={
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">Google Meet placeholder</Badge>
+                <Badge variant="outline">Payment required by local/test policy</Badge>
+                <Badge variant="outline">Notification policy only</Badge>
+              </div>
+            }
+            status={serviceState}
+            stepNumber={3}
+            testId="service-form-card"
+            title="Service"
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="setup-service-name">Service name</Label>
+                <Input
+                  disabled={!props.onServiceFieldChange || !props.entities.resource || !!props.entities.service}
+                  id="setup-service-name"
+                  onChange={(event) => props.onServiceFieldChange?.("name", event.target.value)}
+                  value={props.draft.service.name}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="setup-service-duration">Duration (minutes)</Label>
+                <Input
+                  disabled={!props.onServiceFieldChange || !props.entities.resource || !!props.entities.service}
+                  id="setup-service-duration"
+                  min={5}
+                  onChange={(event) => props.onServiceFieldChange?.("durationMinutes", Number(event.target.value) || 0)}
+                  type="number"
+                  value={props.draft.service.durationMinutes}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="setup-service-description">Description</Label>
+              <Textarea
+                disabled={!props.onServiceFieldChange || !props.entities.resource || !!props.entities.service}
+                id="setup-service-description"
+                onChange={(event) => props.onServiceFieldChange?.("description", event.target.value)}
+                value={props.draft.service.description}
+              />
+            </div>
+            <div className="rounded-lg border p-3 text-sm text-muted-foreground">
+              No payment required is not enabled in this default smoke path. This setup uses a local/test payment requirement so the public booking flow still exercises the controlled payment-required state.
+            </div>
+          </SetupSectionCard>
+
+          <SetupSectionCard
+            action={props.actionButtons?.availability}
+            description="Expose only the simple weekly rule the backend already supports."
+            status={availabilityState}
+            stepNumber={4}
+            testId="availability-form-card"
+            title="Availability"
+          >
+            <div className="space-y-2">
+              <Label>Days of week</Label>
+              <div className="flex flex-wrap gap-2">
+                {weekdayOrder.map((day) => {
+                  const selected = props.draft.availability.daysOfWeek.includes(day);
+                  return (
+                    <Button
+                      disabled={!props.onToggleAvailabilityDay || !props.entities.service || !!props.entities.availabilityRule}
+                      key={day}
+                      onClick={() => props.onToggleAvailabilityDay?.(day)}
+                      type="button"
+                      variant={selected ? "default" : "outline"}
+                    >
+                      {day.slice(0, 3)}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="setup-availability-start">Start time</Label>
+                <Input
+                  disabled={!props.onAvailabilityFieldChange || !props.entities.service || !!props.entities.availabilityRule}
+                  id="setup-availability-start"
+                  onChange={(event) => props.onAvailabilityFieldChange?.("localStartTime", event.target.value)}
+                  type="time"
+                  value={props.draft.availability.localStartTime}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="setup-availability-end">End time</Label>
+                <Input
+                  disabled={!props.onAvailabilityFieldChange || !props.entities.service || !!props.entities.availabilityRule}
+                  id="setup-availability-end"
+                  onChange={(event) => props.onAvailabilityFieldChange?.("localEndTime", event.target.value)}
+                  type="time"
+                  value={props.draft.availability.localEndTime}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="setup-availability-timezone">Timezone</Label>
+                <Input
+                  disabled={!props.onAvailabilityFieldChange || !props.entities.service || !!props.entities.availabilityRule}
+                  id="setup-availability-timezone"
+                  onChange={(event) => props.onAvailabilityFieldChange?.("timeZoneId", event.target.value)}
+                  value={props.draft.availability.timeZoneId}
+                />
+              </div>
+            </div>
+          </SetupSectionCard>
+        </div>
+
+        <div className="space-y-6">
+          <SetupResultCard
+            copyStatus={props.copyStatus}
+            entities={props.entities}
+            onCopyLink={props.onCopyLink}
+            providerSlug={props.draft.provider.slug}
+            publicLink={props.publicLink}
+          />
+          <SetupEntitySummary entities={props.entities} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ProviderSetupView({
   errorMessage,
   providerSlug = "demo-provider",
   providerTimeZone = browserTimeZone(),
   localDevContext,
+  provider,
+  resource,
+  service,
+  availabilityRule,
 }: {
   errorMessage?: string;
   providerSlug?: string;
   providerTimeZone?: string;
   localDevContext?: LocalDevPlatformContext;
+  provider?: Provider | null;
+  resource?: BookableResource | null;
+  service?: SchedulingService | null;
+  availabilityRule?: AvailabilityRule | null;
 }) {
-  const publicLink = `/book/${providerSlug}`;
+  const draft = createDefaultSetupDraft(providerSlug, providerTimeZone);
 
   return (
-    <div className="scheduling-stack">
-      <section className="scheduling-subpanel">
-        <h2>Provider setup</h2>
-        <p>Unsafe local-dev path for creating a demo provider, assigning a resource, and generating a public booking link.</p>
-        <AdminModeBanner errorMessage={errorMessage} />
-        {localDevContext ? <OwnershipSummary localDevContext={localDevContext} /> : null}
-        {errorMessage && isOwnershipError(errorMessage) ? (
-          <p className="error" role="alert">
-            This provider is not owned by the current local-dev Scheduling installation.
-          </p>
-        ) : null}
-      </section>
-
-      <section className="scheduling-two-column">
-        <article className="card scheduling-setup-card">
-          <h3>Suggested defaults</h3>
-          <dl className="scheduling-definition-list">
-            <dt>Provider slug</dt>
-            <dd>
-              <code>{providerSlug}</code>
-            </dd>
-            <dt>Display timezone</dt>
-            <dd>
-              <code>{providerTimeZone}</code>
-            </dd>
-            <dt>Public booking link</dt>
-            <dd>
-              <a className="scheduling-inline-link" href={publicLink}>
-                {publicLink}
-              </a>
-            </dd>
-          </dl>
-        </article>
-
-        <article className="card scheduling-setup-card">
-          <h3>Setup sequence</h3>
-          <ol className="scheduling-sequence">
-            <li>
-              Create provider <code>{providerSlug}</code> in <code>{providerTimeZone}</code>.
-            </li>
-            <li>Create a <code>person</code> resource.</li>
-            <li>Create a public 30 minute service.</li>
-            <li>Assign the service to the resource.</li>
-            <li>Create Monday 09:00–17:00 availability.</li>
-          </ol>
-        </article>
-      </section>
-    </div>
+    <ProviderSetupFlow
+      draft={draft}
+      entities={setupEntitiesFromValues({ provider, resource, service, availabilityRule })}
+      errorMessage={errorMessage}
+      localDevContext={localDevContext}
+      modeLabel="Fixture preview"
+      publicLink={`/book/${providerSlug}`}
+    />
   );
 }
 
@@ -1422,45 +2103,113 @@ export function ConfirmationView({
   booking,
   serviceName = "Service",
   resourceName = "Resource",
+  actions,
+  lifecycle,
+  auditEvents,
 }: {
   booking: Booking;
   serviceName?: string;
   resourceName?: string;
+  actions?: ReactNode;
+  lifecycle?: SchedulingLifecycleSummary;
+  auditEvents?: BookingAuditEvent[];
 }) {
   const bookingId = booking.id.value;
-  const tz = booking.range?.timeZoneId ?? "timezone unavailable";
+  const tz = booking.range?.timeZoneId ?? "Timezone unavailable";
+  const actionState = bookingActionLabels(booking);
 
   return (
-    <section className="scheduling-subpanel">
-      <div className="scheduling-section-head">
-        <div>
-          <h2>Booking confirmed</h2>
-          <p>
-            {booking.customer.name} · {statusLabel(booking.status)}
-          </p>
-        </div>
-        <div className="scheduling-chip-row">
-          <StatusChip tone="confirmed" label={statusLabel(booking.status)} />
-          {paymentSummaryLabel(booking) ? <StatusChip tone={chipToneForValue(paymentToneValue(booking))} label={paymentSummaryLabel(booking)!} /> : null}
-        </div>
-      </div>
-      <dl className="scheduling-definition-list">
-        <dt>Booking id</dt>
-        <dd>{bookingId}</dd>
-        <dt>Service</dt>
-        <dd>{serviceName}</dd>
-        <dt>Resource</dt>
-        <dd>{resourceName}</dd>
-        <dt>Date/time</dt>
-        <dd>{booking.range?.startsAtUtc ?? "time unavailable"}</dd>
-        <dt>Timezone</dt>
-        <dd>{tz}</dd>
-      </dl>
-      <BookingMetaPanels booking={booking} />
-      {booking.status === "confirmed" ? (
-        <a className="scheduling-inline-link" href={schedulingEndpoints.bookingIcs(bookingId)}>
-          Download ICS
-        </a>
+    <section className="scheduling-stack" data-testid="booking-status-root">
+      <Card data-testid="booking-status-hero">
+        <CardHeader>
+          <CardTitle>
+            <div className="scheduling-section-head">
+              <div>
+                <h2>{bookingPrimaryStatusHeading(booking)}</h2>
+                <p>{bookingPrimaryStatusBody(booking)}</p>
+              </div>
+              <div className="scheduling-chip-row">
+                <StatusChip tone={chipToneForValue(booking.status)} label={statusLabel(booking.status)} />
+                {paymentSummaryLabel(booking) ? <StatusChip tone={chipToneForValue(paymentToneValue(booking))} label={paymentSummaryLabel(booking)!} /> : null}
+                {notificationSummaryLabel(lifecycle?.notificationSummary ?? booking.notificationSummary) ? (
+                  <StatusChip tone="info" label={notificationSummaryLabel(lifecycle?.notificationSummary ?? booking.notificationSummary)!} />
+                ) : null}
+              </div>
+            </div>
+          </CardTitle>
+          <CardDescription>
+            {booking.customer.name} booked {serviceName}.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card data-testid="booking-status-details">
+        <CardHeader>
+          <CardTitle>Booking details</CardTitle>
+          <CardDescription>Everything needed to understand what was booked at a glance.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <dl className="scheduling-definition-list">
+            <dt>Provider/resource</dt>
+            <dd>{resourceName}</dd>
+            <dt>Service</dt>
+            <dd>{serviceName}</dd>
+            <dt>Date and time</dt>
+            <dd>{formatDateTimeRange(booking.range)}</dd>
+            <dt>Timezone</dt>
+            <dd>{tz}</dd>
+            <dt>Duration</dt>
+            <dd>{formatDurationMinutes(booking.range)}</dd>
+            <dt>Location</dt>
+            <dd>Google Meet</dd>
+            <dt>Reference</dt>
+            <dd>{bookingId}</dd>
+          </dl>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="booking-status-next-steps">
+        <CardHeader>
+          <CardTitle>What happens next</CardTitle>
+          <CardDescription>Short, honest guidance without implying provider integrations that do not exist.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="scheduling-checklist">
+            {nextStepLinesForBooking(booking).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="booking-status-actions">
+        <CardHeader>
+          <CardTitle>Actions</CardTitle>
+          <CardDescription>Primary actions stay obvious. Debug and lifecycle details stay secondary.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="scheduling-chip-row">
+            {actionState.allowIcs ? (
+              <Button asChild variant="default">
+                <a href={schedulingEndpoints.bookingIcs(bookingId)}>Download ICS</a>
+              </Button>
+            ) : null}
+            {actions}
+            {actionState.allowBookAnother ? (
+              <Button asChild variant="outline">
+                <a href={linkWithCurrentQuery("/apps/scheduling")}>Book another time</a>
+              </Button>
+            ) : null}
+            {!actionState.allowCancel ? <StatusChip tone="neutral" label="Confirmed-only actions disabled" /> : null}
+          </div>
+          {actionState.allowCancel ? <p className="text-sm text-muted-foreground">Cancellation is available from the provider bookings surface in this local flow.</p> : null}
+        </CardContent>
+      </Card>
+
+      <BookingMetaPanels booking={booking} notificationSummary={lifecycle?.notificationSummary ?? booking.notificationSummary} />
+
+      {lifecycle || auditEvents?.length ? (
+        <BookingDebugPanel booking={booking} auditEvents={auditEvents ?? []} lifecycle={lifecycle} />
       ) : null}
     </section>
   );
@@ -1480,12 +2229,12 @@ export function ProviderBookingsView({
   errorMessage?: string;
 }) {
   return (
-    <div className="scheduling-stack">
-      <section className="scheduling-subpanel">
+    <div className="scheduling-stack" data-testid="provider-bookings-root">
+      <section className="scheduling-subpanel" data-testid="provider-bookings-list">
         <div className="scheduling-section-head">
           <div>
             <h2>Provider bookings</h2>
-            <p>Fixture-backed admin detail surface for lifecycle, policy, and audit summaries.</p>
+            <p>Readable booking status, payment, notifications, and lifecycle access for provider-side follow-up.</p>
           </div>
           <div className="scheduling-chip-row">
             <StatusChip tone="warning" label="unsafe local-dev admin" />
@@ -1499,52 +2248,65 @@ export function ProviderBookingsView({
         ) : null}
 
         <div className="scheduling-bookings-table-wrap">
-          <table className="scheduling-bookings-table">
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th>Customer</th>
-                <th>Time</th>
-                <th>Policies</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bookings.map((booking) => (
-                <tr key={booking.id.value}>
-                  <td>
-                    <StatusChip tone={chipToneForValue(booking.status)} label={statusLabel(booking.status)} />
-                  </td>
-                  <td>
-                    <strong>{booking.customer.name}</strong>
-                    <div>{booking.customer.email}</div>
-                  </td>
-                  <td>
-                    {booking.range?.startsAtUtc} {booking.range?.timeZoneId}
-                  </td>
-                  <td>
+          <div className="scheduling-stack scheduling-stack-tight">
+            {bookings.map((booking) => (
+              <Card key={booking.id.value}>
+                <CardHeader>
+                  <div className="scheduling-section-head">
+                    <div>
+                      <CardTitle>{booking.customer.name}</CardTitle>
+                      <CardDescription>{formatDateTimeRange(booking.range)}</CardDescription>
+                    </div>
                     <div className="scheduling-chip-row">
+                      <StatusChip tone={chipToneForValue(booking.status)} label={statusLabel(booking.status)} />
                       {paymentSummaryLabel(booking) ? (
                         <StatusChip tone={chipToneForValue(paymentToneValue(booking))} label={paymentSummaryLabel(booking)!} />
-                      ) : null}
+                      ) : (
+                        <StatusChip tone="neutral" label="No payment required" />
+                      )}
                       {notificationSummaryLabel(booking.notificationSummary) ? (
                         <StatusChip tone="info" label={notificationSummaryLabel(booking.notificationSummary)!} />
                       ) : null}
                     </div>
-                  </td>
-                  <td>
-                    {booking.status === "confirmed" ? <button>Cancel booking</button> : null}
-                    {booking.status === "confirmed" ? (
-                      <a className="scheduling-inline-link" href={schedulingEndpoints.bookingIcs(booking.id.value)}>
-                        ICS
-                      </a>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <dl className="scheduling-definition-list">
+                    <dt>Email</dt>
+                    <dd>{booking.customer.email}</dd>
+                    <dt>Timezone</dt>
+                    <dd>{booking.range?.timeZoneId ?? "Not recorded"}</dd>
+                    <dt>Reference</dt>
+                    <dd>{booking.id.value}</dd>
+                    {booking.status === "cancelled" && booking.cancellationMessage ? (
+                      <>
+                        <dt>Cancellation message</dt>
+                        <dd>{booking.cancellationMessage}</dd>
+                      </>
                     ) : null}
-                    {booking.status === "rescheduled" ? <span className="scheduling-inline-note">ICS blocked for old rescheduled booking</span> : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    {booking.rescheduledToBookingId ? (
+                      <>
+                        <dt>Rescheduled to</dt>
+                        <dd>{booking.rescheduledToBookingId}</dd>
+                      </>
+                    ) : null}
+                  </dl>
+                </CardContent>
+                <CardFooter className="gap-3">
+                  {booking.status === "confirmed" ? <Button type="button" variant="destructive">Cancel booking</Button> : null}
+                  {booking.status === "confirmed" ? (
+                    <Button asChild variant="outline">
+                      <a className="scheduling-inline-link" href={schedulingEndpoints.bookingIcs(booking.id.value)}>
+                        Download ICS
+                      </a>
+                    </Button>
+                  ) : null}
+                  <Button type="button" variant="secondary">Inspect lifecycle</Button>
+                  {booking.status !== "confirmed" ? <StatusChip tone="neutral" label="Confirmed-only actions disabled" /> : null}
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -1563,11 +2325,11 @@ export function BookingDebugPanel({
   lifecycle?: SchedulingLifecycleSummary;
 }) {
   return (
-    <aside className="scheduling-subpanel scheduling-debug">
+    <aside className="scheduling-subpanel scheduling-debug" data-testid="provider-booking-detail">
       <div className="scheduling-section-head">
         <div>
           <h3>Audit and lifecycle</h3>
-          <p>Readable policy and notification summary without exposing raw Dominatus internals.</p>
+          <p>Lifecycle and audit stay available, but secondary to the primary status and actions.</p>
         </div>
         <div className="scheduling-chip-row">
           <StatusChip tone={chipToneForValue(booking.status)} label={statusLabel(booking.status)} />
@@ -1580,13 +2342,46 @@ export function BookingDebugPanel({
       <div className="scheduling-two-column">
         <article className="card">
           <h4>Lifecycle summary</h4>
-          <p>Lifecycle state: {lifecycle?.workflowState ?? "unknown"}</p>
-          <p>Decision/policy result: {lifecycle?.lastDecisionCode ?? booking.cancellationPolicyResult ?? "unknown"}</p>
-          <p>Last audit event id: {lifecycle?.lastAuditEventId ?? "none"}</p>
-          <p>Checkpoint exists: {String(lifecycle?.checkpointExists ?? !!lifecycle?.checkpointPath)}</p>
-          {booking.cancellationReasonCode ? <p>Cancellation reason: {booking.cancellationReasonCode}</p> : null}
-          {booking.rescheduledToBookingId ? <p>Rescheduled to: {booking.rescheduledToBookingId}</p> : null}
-          {booking.rescheduledFromBookingId ? <p>Rescheduled from: {booking.rescheduledFromBookingId}</p> : null}
+          <dl className="scheduling-definition-list">
+            <dt>Current state</dt>
+            <dd>{lifecycle?.workflowState ?? "unknown"}</dd>
+            <dt>Decision/policy result</dt>
+            <dd>{lifecycle?.lastDecisionCode ?? booking.cancellationPolicyResult ?? "unknown"}</dd>
+            <dt>Created</dt>
+            <dd>{formatTimestamp(booking.createdAt ?? lifecycle?.createdAt, booking.range?.timeZoneId ?? "UTC")}</dd>
+            <dt>Confirmed</dt>
+            <dd>{formatTimestamp(booking.confirmedAt ?? lifecycle?.confirmedAt, booking.range?.timeZoneId ?? "UTC")}</dd>
+            <dt>Cancelled</dt>
+            <dd>{formatTimestamp(booking.cancelledAt ?? lifecycle?.cancelledAt, booking.range?.timeZoneId ?? "UTC")}</dd>
+            <dt>Last audit event id</dt>
+            <dd>{lifecycle?.lastAuditEventId ?? "none"}</dd>
+            <dt>Checkpoint exists</dt>
+            <dd>{String(lifecycle?.checkpointExists ?? !!lifecycle?.checkpointPath)}</dd>
+            {booking.cancellationReasonCode ? (
+              <>
+                <dt>Cancellation reason</dt>
+                <dd>{booking.cancellationReasonCode}</dd>
+              </>
+            ) : null}
+            {booking.cancellationMessage ? (
+              <>
+                <dt>Cancellation message</dt>
+                <dd>{booking.cancellationMessage}</dd>
+              </>
+            ) : null}
+            {booking.rescheduledToBookingId ? (
+              <>
+                <dt>Rescheduled to</dt>
+                <dd>{booking.rescheduledToBookingId}</dd>
+              </>
+            ) : null}
+            {booking.rescheduledFromBookingId ? (
+              <>
+                <dt>Rescheduled from</dt>
+                <dd>{booking.rescheduledFromBookingId}</dd>
+              </>
+            ) : null}
+          </dl>
         </article>
 
         <article className="card">
@@ -1600,7 +2395,7 @@ export function BookingDebugPanel({
         <ul className="scheduling-audit-list">
           {auditEvents.map((event) => (
             <li key={event.eventId}>
-              <strong>{event.eventType}</strong> · {event.occurredAt} · {event.data?.decision ?? event.data?.policyResult ?? event.message}
+              <strong>{event.eventType}</strong> · {formatTimestamp(event.occurredAt, booking.range?.timeZoneId ?? "UTC")} · {event.data?.decision ?? event.data?.policyResult ?? event.message}
             </li>
           ))}
         </ul>
@@ -1670,17 +2465,24 @@ function ConfirmationSurfaceView({ scenario }: { scenario: SchedulingFixtureScen
 
   return (
     <div className="scheduling-stack">
-      <ConfirmationView booking={booking} serviceName={serviceName} resourceName="Ada Demo Practice" />
-      <section className="scheduling-two-column">
-        <article className="card">
-          <h3>Confirmation notes</h3>
-          <p>Confirmed bookings expose ICS. Cancelled and old rescheduled bookings do not render broken ICS links.</p>
-        </article>
-        <article className="card">
-          <h3>Notification/payment labels</h3>
-          <BookingMetaPanels booking={booking} />
-        </article>
-      </section>
+      <ConfirmationView
+        actions={
+          <Button asChild variant="secondary">
+            <a
+              className="scheduling-inline-link"
+              data-testid="confirmation-open-bookings"
+              href={linkWithCurrentQuery(`/apps/scheduling/bookings?fixture=notification-summary&bookingId=${encodeURIComponent(booking.id.value)}`)}
+            >
+              Open provider bookings
+            </a>
+          </Button>
+        }
+        auditEvents={scenario.auditEvents}
+        booking={booking}
+        lifecycle={scenario.lifecycle}
+        resourceName="Ada Demo Practice"
+        serviceName={serviceName}
+      />
     </div>
   );
 }
@@ -1721,23 +2523,32 @@ function BookingMetaPanels({
   notificationSummary?: NotificationSummary;
   compact?: boolean;
 }) {
+  const paymentLabel = paymentSummaryLabel(booking) ?? "No payment required";
+
   return (
     <div className={compact ? "scheduling-stack scheduling-stack-tight" : "scheduling-two-column"}>
-      {booking.paymentPolicyLabel || booking.paymentPolicySnapshot || booking.paymentReference ? (
-        <article className={compact ? "" : "card"}>
-          <h4>Payment</h4>
-          {booking.paymentPolicyLabel ? <p>{booking.paymentPolicyLabel}</p> : null}
-          {booking.paymentPolicySnapshot && !booking.paymentPolicyLabel ? <p>{paymentRequirementLabel(booking.paymentRequirementStatus)}</p> : null}
-          {booking.paymentReference ? <p>Reference: {booking.paymentReference}</p> : null}
-        </article>
-      ) : null}
-      {booking.notificationPolicyLabel || notificationSummary ? (
-        <article className={compact ? "" : "card"}>
-          <h4>Notifications</h4>
-          {booking.notificationPolicyLabel ? <p>{booking.notificationPolicyLabel}</p> : null}
-          {notificationSummary ? <NotificationSummaryList summary={notificationSummary} /> : null}
-        </article>
-      ) : null}
+      <article className={compact ? "" : "card"}>
+        <h4>Payment</h4>
+        <div className="scheduling-chip-row">
+          <StatusChip tone={chipToneForValue(paymentToneValue(booking))} label={paymentLabel} />
+        </div>
+        {booking.paymentPolicyLabel ? <p>{booking.paymentPolicyLabel}</p> : null}
+        {booking.paymentRequirementStatus === "payment_required" ? (
+          <p>This booking requires controlled local/test payment satisfaction before confirmation.</p>
+        ) : null}
+        {!booking.paymentPolicyLabel && !booking.paymentReference && paymentLabel === "No payment required" ? (
+          <p>No payment step is required for this booking.</p>
+        ) : null}
+        {booking.paymentReference ? <p>Reference: {booking.paymentReference}</p> : null}
+        {booking.paymentSatisfiedAt ? <p>Satisfied at: {formatTimestamp(booking.paymentSatisfiedAt, booking.range?.timeZoneId ?? "UTC")}</p> : null}
+      </article>
+
+      <article className={compact ? "" : "card"}>
+        <h4>Notifications</h4>
+        {booking.notificationPolicyLabel ? <p>{booking.notificationPolicyLabel}</p> : null}
+        <p>Notification policy only — no real email/SMS provider connected.</p>
+        {notificationSummary ? <NotificationSummaryList summary={notificationSummary} /> : <p>No notification records were captured for this booking.</p>}
+      </article>
     </div>
   );
 }
@@ -1755,7 +2566,7 @@ function NotificationSummaryList({ summary }: { summary: NotificationSummary }) 
   return (
     <ul className="scheduling-checklist scheduling-checklist-tight">
       <li>Pending: {summary.pending}</li>
-      <li>Sent fake: {summary.sentFake}</li>
+      <li>Sent fake/local: {summary.sentFake}</li>
       <li>Cancelled: {summary.cancelled}</li>
       <li>Skipped: {summary.skipped}</li>
       <li>Failed: {summary.failed}</li>
@@ -1850,19 +2661,79 @@ function LiveSchedulingSidebar() {
 }
 
 function LiveSchedulingLandingView() {
+  const liveContext = loadLiveContext();
+  const publicLink = liveContext.providerSlug ? linkWithCurrentQuery(`/book/${liveContext.providerSlug}`) : null;
+  const bookingsLink = liveContext.providerId
+    ? linkWithCurrentQuery(`/apps/scheduling/bookings?providerId=${encodeURIComponent(liveContext.providerId)}`)
+    : linkWithCurrentQuery("/apps/scheduling/bookings");
+
   return (
     <div className="scheduling-stack">
-      <section className="scheduling-subpanel">
-        <h2>Scheduling real-backend smoke</h2>
-        <p>This route is ready for live backend verification. Start on provider setup, then follow the generated public booking link through hold, intake, payment-required, confirmation, and provider bookings.</p>
-        <AdminModeBanner />
-      </section>
-      <section className="scheduling-subpanel">
-        <h2>Next step</h2>
-        <a className="scheduling-inline-link" data-testid="live-open-setup" href={linkWithCurrentQuery("/apps/scheduling/setup")}>
-          Open provider setup
-        </a>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>Scheduling real-backend smoke</CardTitle>
+          <CardDescription>Use this local/dev admin surface to create a real bookable setup, open the generated public link, and walk the live booking journey end to end.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <AdminModeBanner />
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle>Setup provider</CardTitle>
+                <CardDescription>Create the provider, resource, service, and availability rule first.</CardDescription>
+              </CardHeader>
+              <CardFooter>
+                <Button asChild data-testid="live-open-setup">
+                  <a href={linkWithCurrentQuery("/apps/scheduling/setup")}>Open provider setup</a>
+                </Button>
+              </CardFooter>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Public booking demo</CardTitle>
+                <CardDescription>{publicLink ? "Open the generated live booking page." : "Available after provider creation."}</CardDescription>
+              </CardHeader>
+              <CardFooter>
+                {publicLink ? (
+                  <Button asChild variant="secondary">
+                    <a href={publicLink}>Open public booking</a>
+                  </Button>
+                ) : (
+                  <Button disabled type="button" variant="secondary">
+                    Open public booking
+                  </Button>
+                )}
+              </CardFooter>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Provider bookings</CardTitle>
+                <CardDescription>Review confirmation, lifecycle, notification summary, and cancellation on live backend data.</CardDescription>
+              </CardHeader>
+              <CardFooter>
+                <Button asChild variant="secondary">
+                  <a href={bookingsLink}>Open provider bookings</a>
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Policy skeleton status</CardTitle>
+          <CardDescription>These reminders stay intentionally honest in local/dev mode.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline">No auth/login</Badge>
+            <Badge variant="outline">No real payment provider</Badge>
+            <Badge variant="outline">No real email or SMS provider</Badge>
+            <Badge variant="outline">No calendar sync</Badge>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -1871,11 +2742,23 @@ function LiveProviderSetupView() {
   const [context, setContext] = useState<LocalDevPlatformContext | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>();
   const [busyStep, setBusyStep] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [draft, setDraft] = useState<SetupDraft>(() => {
+    const liveContext = loadLiveContext();
+    const next = createDefaultSetupDraft(liveContext.providerSlug ?? defaultProviderSlug, liveContext.providerTimeZone ?? browserTimeZone());
+    next.provider.displayName = liveContext.providerName ?? "M24 Smoke Provider";
+    next.provider.contactEmail = "provider-smoke@example.test";
+    next.provider.publicDescription = "Local-dev provider for the Leviathan Scheduling smoke flow.";
+    next.resource.displayName = "M24 Smoke Resource";
+    next.service.name = "30 minute consult";
+    next.service.description = "Live backend smoke service with fake/local payment and notification policy.";
+    return next;
+  });
   const [provider, setProvider] = useState(loadLiveContext().providerId ? { id: { value: loadLiveContext().providerId! }, slug: loadLiveContext().providerSlug ?? defaultProviderSlug, displayName: loadLiveContext().providerName ?? "M24 Smoke Provider", timeZoneId: loadLiveContext().providerTimeZone ?? browserTimeZone() } : null);
   const [resource, setResource] = useState<BookableResource | null>(null);
   const [service, setService] = useState<SchedulingService | null>(null);
   const [availabilityRule, setAvailabilityRule] = useState<AvailabilityRule | null>(null);
-  const providerTimeZone = provider?.timeZoneId ?? loadLiveContext().providerTimeZone ?? browserTimeZone();
+  const providerTimeZone = provider?.timeZoneId ?? draft.provider.timeZoneId;
   const publicLink = provider?.slug ? linkWithCurrentQuery(`/book/${provider.slug}`) : null;
 
   useEffect(() => {
@@ -1894,13 +2777,24 @@ function LiveProviderSetupView() {
 
       if (step === "provider") {
         const created = await createProvider({
-          slug: defaultProviderSlug,
-          displayName: "M24 Smoke Provider",
-          timeZoneId: providerTimeZone,
-          contactEmail: "provider-smoke@example.test",
-          publicDescription: "M24 real-backend smoke provider.",
+          slug: draft.provider.slug,
+          displayName: draft.provider.displayName,
+          timeZoneId: draft.provider.timeZoneId,
+          contactEmail: draft.provider.contactEmail,
+          publicDescription: draft.provider.publicDescription,
         });
         setProvider(created);
+        setDraft((current) => ({
+          ...current,
+          resource: {
+            ...current.resource,
+            timeZoneId: created.timeZoneId,
+          },
+          availability: {
+            ...current.availability,
+            timeZoneId: created.timeZoneId,
+          },
+        }));
         saveLiveContext({
           providerId: created.id.value,
           providerSlug: created.slug,
@@ -1917,9 +2811,9 @@ function LiveProviderSetupView() {
       if (step === "resource") {
         const created = await createResource({
           providerId,
-          displayName: "M24 Smoke Resource",
-          resourceType: "person",
-          timeZoneId: providerTimeZone,
+          displayName: draft.resource.displayName,
+          resourceType: draft.resource.resourceType,
+          timeZoneId: draft.resource.timeZoneId,
         });
         setResource(created);
         saveLiveContext({ providerId, resourceId: created.id.value });
@@ -1932,9 +2826,9 @@ function LiveProviderSetupView() {
       if (step === "service") {
         const created = await createService({
           providerId,
-          name: "30 minute consult",
-          description: "Live backend smoke service with fake/local payment and notification policy.",
-          durationMinutes: 30,
+          name: draft.service.name,
+          description: draft.service.description,
+          durationMinutes: draft.service.durationMinutes,
           paymentPolicy: livePaymentPolicy,
           notificationPolicy: liveNotificationPolicy,
         });
@@ -1950,10 +2844,10 @@ function LiveProviderSetupView() {
       const created = await createAvailabilityRule({
         providerId,
         resourceId,
-        timeZoneId: providerTimeZone,
-        daysOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-        localStartTime: "09:00",
-        localEndTime: "17:00",
+        timeZoneId: draft.availability.timeZoneId,
+        daysOfWeek: draft.availability.daysOfWeek,
+        localStartTime: draft.availability.localStartTime,
+        localEndTime: draft.availability.localEndTime,
       });
       setAvailabilityRule(created);
     } catch (error) {
@@ -1963,74 +2857,100 @@ function LiveProviderSetupView() {
     }
   }
 
+  async function copyPublicLink() {
+    if (!publicLink || typeof navigator === "undefined" || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(publicLink);
+      setCopyStatus("Copied");
+      window.setTimeout(() => setCopyStatus(null), 1500);
+    } catch {
+      setCopyStatus("Copy failed");
+      window.setTimeout(() => setCopyStatus(null), 1500);
+    }
+  }
+
   return (
-    <div className="scheduling-stack">
-      <section className="scheduling-subpanel">
-        <h2>Provider setup</h2>
-        <p>This real-backend flow uses the existing local-dev admin endpoints with stable defaults for smoke coverage.</p>
-        <AdminModeBanner errorMessage={errorMessage} />
-        {context ? <OwnershipSummary localDevContext={context} /> : null}
-        {errorMessage && !isUnsafeAdminError(errorMessage) ? (
-          <p className="error" role="alert">
-            {controlledSchedulingError(errorMessage)}
-          </p>
-        ) : null}
-      </section>
-
-      <section className="scheduling-two-column">
-        <article className="card scheduling-setup-card">
-          <h3>Stable defaults</h3>
-          <dl className="scheduling-definition-list">
-            <dt>Provider slug</dt>
-            <dd>
-              <code>{defaultProviderSlug}</code>
-            </dd>
-            <dt>Display timezone</dt>
-            <dd>
-              <code>{providerTimeZone}</code>
-            </dd>
-            <dt>Public booking link</dt>
-            <dd>{publicLink ? <a className="scheduling-inline-link" data-testid="setup-public-link" href={publicLink}>{publicLink}</a> : "Created after provider setup."}</dd>
-          </dl>
-        </article>
-
-        <article className="card scheduling-setup-card">
-          <h3>Setup actions</h3>
-          <ol className="scheduling-sequence">
-            <li>
-              <button data-testid="setup-create-provider" disabled={!!busyStep || !!provider} onClick={() => void runStep("provider")}>
-                {busyStep === "provider" ? "Creating provider…" : provider ? "Provider created" : "Create provider"}
-              </button>
-            </li>
-            <li>
-              <button data-testid="setup-create-resource" disabled={!!busyStep || !provider || !!resource} onClick={() => void runStep("resource")}>
-                {busyStep === "resource" ? "Creating resource…" : resource ? "Resource created" : "Create resource"}
-              </button>
-            </li>
-            <li>
-              <button data-testid="setup-create-service" disabled={!!busyStep || !resource || !!service} onClick={() => void runStep("service")}>
-                {busyStep === "service" ? "Creating service…" : service ? "Service created" : "Create service"}
-              </button>
-            </li>
-            <li>
-              <button data-testid="setup-create-availability" disabled={!!busyStep || !service || !!availabilityRule} onClick={() => void runStep("availability")}>
-                {busyStep === "availability" ? "Creating availability…" : availabilityRule ? "Availability created" : "Create availability"}
-              </button>
-            </li>
-          </ol>
-        </article>
-      </section>
-
-      <section className="scheduling-subpanel">
-        <h2>Created entities</h2>
-        <ul className="scheduling-checklist">
-          <li>Provider: {provider ? provider.id.value : "pending"}</li>
-          <li>Resource: {resource ? resource.id.value : "pending"}</li>
-          <li>Service: {service ? service.id.value : "pending"}</li>
-          <li>Availability rule: {availabilityRule ? availabilityRule.id.value : "pending"}</li>
-        </ul>
-      </section>
-    </div>
+    <ProviderSetupFlow
+      actionButtons={{
+        provider: (
+          <Button data-testid="setup-create-provider" disabled={!!busyStep || !!provider} onClick={() => void runStep("provider")} type="button">
+            {busyStep === "provider" ? "Creating provider…" : provider ? "Provider created" : "Create provider"}
+          </Button>
+        ),
+        resource: (
+          <Button data-testid="setup-create-resource" disabled={!!busyStep || !provider || !!resource} onClick={() => void runStep("resource")} type="button">
+            {busyStep === "resource" ? "Creating resource…" : resource ? "Resource created" : "Create resource"}
+          </Button>
+        ),
+        service: (
+          <Button data-testid="setup-create-service" disabled={!!busyStep || !resource || !!service} onClick={() => void runStep("service")} type="button">
+            {busyStep === "service" ? "Creating service…" : service ? "Service created" : "Create service"}
+          </Button>
+        ),
+        availability: (
+          <Button data-testid="setup-create-availability" disabled={!!busyStep || !service || !!availabilityRule} onClick={() => void runStep("availability")} type="button">
+            {busyStep === "availability" ? "Creating availability…" : availabilityRule ? "Availability created" : "Create availability"}
+          </Button>
+        ),
+      }}
+      copyStatus={copyStatus}
+      draft={draft}
+      entities={setupEntitiesFromValues({ provider, resource, service, availabilityRule })}
+      errorMessage={errorMessage}
+      localDevContext={context ?? undefined}
+      modeLabel="Live backend"
+      onAvailabilityFieldChange={(field, value) =>
+        setDraft((current) => ({
+          ...current,
+          availability: {
+            ...current.availability,
+            [field]: value,
+          },
+        }))
+      }
+      onCopyLink={() => void copyPublicLink()}
+      onProviderFieldChange={(field, value) =>
+        setDraft((current) => ({
+          ...current,
+          provider: {
+            ...current.provider,
+            [field]: value,
+          },
+        }))
+      }
+      onResourceFieldChange={(field, value) =>
+        setDraft((current) => ({
+          ...current,
+          resource: {
+            ...current.resource,
+            [field]: value,
+          },
+        }))
+      }
+      onServiceFieldChange={(field, value) =>
+        setDraft((current) => ({
+          ...current,
+          service: {
+            ...current.service,
+            [field]: value,
+          },
+        }))
+      }
+      onToggleAvailabilityDay={(day) =>
+        setDraft((current) => ({
+          ...current,
+          availability: {
+            ...current.availability,
+            daysOfWeek: current.availability.daysOfWeek.includes(day)
+              ? current.availability.daysOfWeek.filter((entry) => entry !== day)
+              : [...current.availability.daysOfWeek, day].sort(
+                  (left, right) => weekdayOrder.indexOf(left as (typeof weekdayOrder)[number]) - weekdayOrder.indexOf(right as (typeof weekdayOrder)[number]),
+                ),
+          },
+        }))
+      }
+      publicLink={publicLink}
+    />
   );
 }
 
@@ -2191,12 +3111,12 @@ function LivePublicBookingView() {
               {busy === "confirm" ? "Confirming…" : "Confirm booking"}
             </button>
             <button data-testid="public-fake-satisfy-payment" disabled={!hold || !!busy} onClick={() => void satisfyLivePayment()}>
-              {busy === "payment" ? "Satisfying payment…" : "Fake-satisfy payment"}
+              {busy === "payment" ? "Marking fake/local payment satisfied…" : "Mark fake/local payment satisfied"}
             </button>
           </div>
           {errorMessage && isPaymentRequiredError(errorMessage) ? (
             <p className="error" data-testid="public-payment-required" role="alert">
-              Payment is required before confirmation. Use the fake/local satisfy action, then confirm again.
+              This booking requires controlled local/test payment satisfaction before confirmation.
             </p>
           ) : null}
         </article>
@@ -2248,12 +3168,18 @@ function LiveConfirmationView() {
 
   return (
     <div className="scheduling-stack">
-      <ConfirmationView booking={booking} serviceName="30 minute consult" resourceName="M24 Smoke Resource" />
-      <section className="scheduling-subpanel">
-        <a className="scheduling-inline-link" data-testid="confirmation-open-bookings" href={linkWithCurrentQuery(`/apps/scheduling/bookings?providerId=${encodeURIComponent(booking.providerId?.value ?? liveContext.providerId ?? "")}&bookingId=${encodeURIComponent(booking.id.value)}`)}>
-          Open provider bookings
-        </a>
-      </section>
+      <ConfirmationView
+        actions={
+          <Button asChild data-testid="confirmation-open-bookings" variant="secondary">
+            <a href={linkWithCurrentQuery(`/apps/scheduling/bookings?providerId=${encodeURIComponent(booking.providerId?.value ?? liveContext.providerId ?? "")}&bookingId=${encodeURIComponent(booking.id.value)}`)}>
+              Open provider bookings
+            </a>
+          </Button>
+        }
+        booking={booking}
+        resourceName="M24 Smoke Resource"
+        serviceName="30 minute consult"
+      />
     </div>
   );
 }
@@ -2325,12 +3251,12 @@ function LiveProviderBookingsView() {
   }
 
   return (
-    <div className="scheduling-stack">
-      <section className="scheduling-subpanel">
+    <div className="scheduling-stack" data-testid="provider-bookings-root">
+      <section className="scheduling-subpanel" data-testid="provider-bookings-list">
         <div className="scheduling-section-head">
           <div>
             <h2>Provider bookings</h2>
-            <p>Live admin surface for lifecycle, audit, notification summary, and cancellation.</p>
+            <p>Live admin surface for readable booking status, notification summary, and controlled cancellation.</p>
           </div>
           <div className="scheduling-chip-row">
             <button data-testid="bookings-refresh" disabled={busy || !providerId} onClick={() => void refreshBookings(providerId!, selectedBooking?.id.value)}>
@@ -2342,42 +3268,63 @@ function LiveProviderBookingsView() {
         {errorMessage && !isUnsafeAdminError(errorMessage) ? <p className="error" role="alert">{controlledSchedulingError(errorMessage)}</p> : null}
 
         <div className="scheduling-bookings-table-wrap">
-          <table className="scheduling-bookings-table">
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th>Customer</th>
-                <th>Time</th>
-                <th>Policies</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bookings.map((booking) => (
-                <tr key={booking.id.value} data-testid={`booking-row-${booking.id.value}`}>
-                  <td><StatusChip tone={chipToneForValue(booking.status)} label={statusLabel(booking.status)} /></td>
-                  <td><strong>{booking.customer.name}</strong><div>{booking.customer.email}</div></td>
-                  <td>{booking.range?.startsAtUtc} {booking.range?.timeZoneId}</td>
-                  <td>
-                    <div className="scheduling-chip-row">
-                      {paymentSummaryLabel(booking) ? <StatusChip tone={chipToneForValue(paymentToneValue(booking))} label={paymentSummaryLabel(booking)!} /> : null}
-                      {notificationSummaryLabel(booking.notificationSummary) ? <StatusChip tone="info" label={notificationSummaryLabel(booking.notificationSummary)!} /> : null}
+          <div className="scheduling-stack scheduling-stack-tight">
+            {bookings.map((booking) => {
+              const isSelected = selectedBooking?.id.value === booking.id.value;
+              return (
+                <Card data-testid={`booking-row-${booking.id.value}`} key={booking.id.value}>
+                  <CardHeader>
+                    <div className="scheduling-section-head">
+                      <div>
+                        <CardTitle>{booking.customer.name}</CardTitle>
+                        <CardDescription>{formatDateTimeRange(booking.range)}</CardDescription>
+                      </div>
+                      <div className="scheduling-chip-row">
+                        <StatusChip tone={chipToneForValue(booking.status)} label={statusLabel(booking.status)} />
+                        {paymentSummaryLabel(booking) ? <StatusChip tone={chipToneForValue(paymentToneValue(booking))} label={paymentSummaryLabel(booking)!} /> : <StatusChip tone="neutral" label="No payment required" />}
+                        {notificationSummaryLabel(booking.notificationSummary) ? <StatusChip tone="info" label={notificationSummaryLabel(booking.notificationSummary)!} /> : null}
+                      </div>
                     </div>
-                  </td>
-                  <td>
-                    <button data-testid={`booking-select-${booking.id.value}`} onClick={() => { setSelectedBooking(booking); if (providerId) void loadBookingDetail(providerId, booking.id.value); }}>
+                  </CardHeader>
+                  <CardContent>
+                    <dl className="scheduling-definition-list">
+                      <dt>Email</dt>
+                      <dd>{booking.customer.email}</dd>
+                      <dt>Timezone</dt>
+                      <dd>{booking.range?.timeZoneId ?? "Not recorded"}</dd>
+                      <dt>Reference</dt>
+                      <dd>{booking.id.value}</dd>
+                      {booking.status === "cancelled" && booking.cancellationMessage ? (
+                        <>
+                          <dt>Cancellation message</dt>
+                          <dd>{booking.cancellationMessage}</dd>
+                        </>
+                      ) : null}
+                    </dl>
+                  </CardContent>
+                  <CardFooter className="gap-3">
+                    <Button
+                      data-testid={`booking-select-${booking.id.value}`}
+                      onClick={() => {
+                        setSelectedBooking(booking);
+                        if (providerId) void loadBookingDetail(providerId, booking.id.value);
+                      }}
+                      type="button"
+                      variant={isSelected ? "default" : "secondary"}
+                    >
                       Inspect
-                    </button>
+                    </Button>
                     {booking.status === "confirmed" ? (
-                      <button data-testid="booking-cancel" disabled={busy || selectedBooking?.id.value !== booking.id.value} onClick={() => void cancelSelectedBooking()}>
+                      <Button data-testid="booking-cancel" disabled={busy || !isSelected} onClick={() => void cancelSelectedBooking()} type="button" variant="destructive">
                         Cancel booking
-                      </button>
+                      </Button>
                     ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    {booking.status !== "confirmed" ? <StatusChip tone="neutral" label="Confirmed-only actions disabled" /> : null}
+                  </CardFooter>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       </section>
 
@@ -2386,11 +3333,12 @@ function LiveProviderBookingsView() {
       {selectedBooking ? (
         <section className="scheduling-subpanel" data-testid="booking-notifications">
           <h3>Notifications</h3>
+          <p>Notification policy only — no real email/SMS provider connected.</p>
           {notifications.length ? (
             <ul className="scheduling-audit-list">
               {notifications.map((notification) => (
                 <li key={notification.id.value}>
-                  <strong>{notification.trigger}</strong> · {notification.status} · {notification.channel} · {notification.scheduledForUtc}
+                  <strong>{notification.trigger}</strong> · {notification.status} · {notification.channel} · {formatTimestamp(notification.scheduledForUtc, selectedBooking.range?.timeZoneId ?? "UTC")}
                 </li>
               ))}
             </ul>
@@ -2418,6 +3366,90 @@ export function StatusChip({ tone, label }: { tone: "confirmed" | "warning" | "d
       {label}
     </Badge>
   );
+}
+
+function formatDateTimeRange(range?: Booking["range"]) {
+  if (!range?.startsAtUtc || !range?.endsAtUtc) return "Time unavailable";
+
+  const start = new Date(range.startsAtUtc);
+  const end = new Date(range.endsAtUtc);
+  const dayLabel = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: range.timeZoneId || "UTC",
+  }).format(start);
+  const timeLabel = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: range.timeZoneId || "UTC",
+  }).format(start);
+  const endTimeLabel = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: range.timeZoneId || "UTC",
+  }).format(end);
+
+  return `${dayLabel} at ${timeLabel}–${endTimeLabel}`;
+}
+
+function formatDurationMinutes(range?: Booking["range"]) {
+  if (!range?.startsAtUtc || !range?.endsAtUtc) return "Duration unavailable";
+  const durationMinutes = Math.max(0, Math.round((new Date(range.endsAtUtc).getTime() - new Date(range.startsAtUtc).getTime()) / 60000));
+  return durationMinutes ? `${durationMinutes} minutes` : "Duration unavailable";
+}
+
+function formatTimestamp(value?: string | null, timeZone = "UTC") {
+  if (!value) return "Not recorded";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+  }).format(new Date(value));
+}
+
+function bookingPrimaryStatusHeading(booking: Booking) {
+  return booking.status === "cancelled" ? "Booking cancelled" : "Booking confirmed";
+}
+
+function bookingPrimaryStatusBody(booking: Booking) {
+  if (booking.status === "cancelled") {
+    return "This booking is no longer active. Confirmed-only actions have been disabled.";
+  }
+  return "Your time is reserved. The details below are the source of truth for what happens next.";
+}
+
+function nextStepLinesForBooking(booking: Booking) {
+  if (booking.status === "cancelled") {
+    return [
+      "The provider bookings screen reflects this cancellation.",
+      "Any notification status shown here is policy-only unless a real provider is connected.",
+      "Book another time if you still need the meeting.",
+    ];
+  }
+
+  const payment = paymentSummaryLabel(booking);
+  return [
+    payment === "Payment satisfied (local test)"
+      ? "Payment is marked satisfied for local testing only. No real payment provider is connected."
+      : payment === "No payment required"
+        ? "No payment step is required for this booking."
+        : "Review the payment status below before sharing this confirmation.",
+    "Notifications are policy-only unless a real email or SMS provider is connected.",
+    "Use the provider bookings screen to inspect lifecycle details or cancel if needed.",
+  ];
+}
+
+function bookingActionLabels(booking: Booking) {
+  return {
+    allowCancel: booking.status === "confirmed",
+    allowIcs: booking.status === "confirmed",
+    allowBookAnother: true,
+  };
 }
 
 function slotKey(slot: BookableSlot) {
@@ -2567,11 +3599,11 @@ function paymentStatusLabel(status: string) {
   return status === "payment_required"
     ? "Payment required"
     : status === "payment_satisfied_fake"
-      ? "Payment satisfied (fake/local)"
+      ? "Payment satisfied (local test)"
       : status === "required"
         ? "Payment required"
         : status === "satisfied"
-          ? "Payment satisfied (fake/local)"
+          ? "Payment satisfied (local test)"
         : status === "not_required"
           ? "No payment required"
           : status;
@@ -2592,10 +3624,12 @@ function paymentSummaryLabel(booking: Booking) {
 
 function notificationSummaryLabel(summary?: NotificationSummary) {
   if (!summary) return null;
-  if (summary.pending > 0) return `notifications pending ${summary.pending}`;
-  if (summary.sentFake > 0) return `notifications sent fake ${summary.sentFake}`;
-  if (summary.cancelled > 0) return `notifications cancelled ${summary.cancelled}`;
-  return "notification summary";
+  const parts = [
+    summary.pending > 0 ? `pending ${summary.pending}` : null,
+    summary.sentFake > 0 ? `sent fake ${summary.sentFake}` : null,
+    summary.cancelled > 0 ? `cancelled ${summary.cancelled}` : null,
+  ].filter(Boolean);
+  return parts.length ? `Notifications ${parts.join(" · ")}` : "Notification summary";
 }
 
 function isPaymentRequiredError(message?: string) {

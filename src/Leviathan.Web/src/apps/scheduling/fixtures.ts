@@ -1,8 +1,11 @@
 import type {
+  AvailabilityRule,
+  BookableResource,
   BookableSlot,
   Booking,
   BookingAuditEvent,
   LocalDevPlatformContext,
+  Provider,
   SchedulingLifecycleSummary,
   SchedulingService,
 } from "./types";
@@ -32,6 +35,10 @@ export type SchedulingFixtureScenario = {
   providerSlug?: string;
   providerName?: string;
   providerTimeZone?: string;
+  setupProvider?: Provider;
+  setupResource?: BookableResource;
+  setupService?: SchedulingService;
+  setupAvailabilityRule?: AvailabilityRule;
   services?: SchedulingService[];
   slots?: BookableSlot[];
   booking?: Booking;
@@ -94,6 +101,66 @@ const services: SchedulingService[] = [
     isPublic: true,
   },
 ];
+
+const setupProvider: Provider = {
+  id: { value: "prov_demo" },
+  slug: "demo-provider",
+  displayName: "Emma Brown",
+  timeZoneId: "America/Los_Angeles",
+  contactEmail: "emma@example.test",
+  publicDescription: "Intro calls and working sessions for local scheduling demos.",
+};
+
+const setupResource: BookableResource = {
+  id: { value: "res_emma" },
+  providerId: { value: "prov_demo" },
+  displayName: "Emma Brown",
+  resourceType: "person",
+  timeZoneId: "America/Los_Angeles",
+};
+
+const setupService: SchedulingService = {
+  id: { value: "svc_setup_intro_30" },
+  providerId: { value: "prov_demo" },
+  name: "30 min Intro Call",
+  description: "A focused introductory meeting to discuss goals, constraints, and next steps.",
+  durationMinutes: 30,
+  assignedResourceIds: [{ value: "res_emma" }],
+  isPublic: true,
+  paymentPolicy: {
+    requiresDeposit: false,
+    requiresPrepay: true,
+    depositAmount: null,
+    prepayAmount: { minorUnits: 2500, currency: "USD" },
+    currency: "USD",
+    paymentTiming: "before_confirmation",
+    paymentProviderMode: "fake/local",
+    cancellationPaymentPolicy: "no_refund_policy_yet",
+    reschedulePaymentPolicy: "carry_payment_forward_deferred",
+  },
+  notificationPolicy: {
+    enabled: true,
+    rules: [
+      {
+        trigger: "booking_confirmed",
+        channel: "app",
+        recipientType: "manual_test",
+        templateKey: "booking-confirmed-local",
+        offsetMinutesBeforeStart: null,
+      },
+    ],
+  },
+};
+
+const setupAvailabilityRule: AvailabilityRule = {
+  id: { value: "avail_demo_weekdays" },
+  providerId: { value: "prov_demo" },
+  resourceId: { value: "res_emma" },
+  timeZoneId: "America/Los_Angeles",
+  daysOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+  localStartTime: "09:00",
+  localEndTime: "17:00",
+};
 
 const slots: BookableSlot[] = [
   {
@@ -273,6 +340,9 @@ const confirmedBooking: Booking = {
   serviceId: { value: "svc_intro_30" },
   resourceId: { value: "res_emma" },
   status: "confirmed",
+  createdAt: "2025-05-16T16:57:00Z",
+  updatedAt: "2025-05-16T17:02:00Z",
+  confirmedAt: "2025-05-16T17:01:00Z",
   customer: {
     name: "Ada Lovelace",
     email: "ada@example.test",
@@ -285,9 +355,9 @@ const confirmedBooking: Booking = {
     timeZoneId: "America/Los_Angeles",
   },
   paymentStatus: "payment_satisfied_fake",
-  paymentPolicyLabel: "Fake/local prepay satisfied for demo",
+  paymentPolicyLabel: "Controlled local/test payment satisfaction recorded for this booking.",
   paymentReference: "fakepay_demo_001",
-  notificationPolicyLabel: "Reminder + booking confirmed labels only",
+  notificationPolicyLabel: "Booking confirmation plus reminder policy.",
   notificationSummary: {
     pending: 1,
     sentFake: 1,
@@ -302,15 +372,25 @@ const cancelledBooking: Booking = {
   ...confirmedBooking,
   id: { value: "book_demo_cancelled" },
   status: "cancelled",
+  cancelledAt: "2025-05-16T18:15:00Z",
   cancellationReasonCode: "provider_cancelled",
   cancellationMessage: "Weather closure in local fixture.",
   cancellationActor: "local-dev-admin",
+  notificationSummary: {
+    pending: 0,
+    sentFake: 1,
+    cancelled: 1,
+    skipped: 0,
+    failed: 0,
+    deferredProviderUnavailable: 0,
+  },
 };
 
 const rescheduledBooking: Booking = {
   ...confirmedBooking,
   id: { value: "book_demo_rescheduled_old" },
   status: "rescheduled",
+  updatedAt: "2025-05-20T15:04:00Z",
   rescheduledToBookingId: "book_demo_rescheduled_new",
   notificationSummary: {
     pending: 0,
@@ -326,6 +406,8 @@ const replacementBooking: Booking = {
   ...confirmedBooking,
   id: { value: "book_demo_rescheduled_new" },
   status: "confirmed",
+  createdAt: "2025-05-20T15:04:00Z",
+  confirmedAt: "2025-05-20T15:04:00Z",
   rescheduledFromBookingId: "book_demo_rescheduled_old",
   range: {
     startsAtUtc: "2025-05-20T18:00:00Z",
@@ -338,8 +420,9 @@ const paymentRequiredBooking: Booking = {
   ...confirmedBooking,
   id: { value: "book_demo_payment_required" },
   status: "pending_confirmation",
+  createdAt: "2025-05-16T16:57:00Z",
   paymentStatus: "payment_required",
-  paymentPolicyLabel: "Deposit required before confirmation",
+  paymentPolicyLabel: "Controlled local/test payment satisfaction is required before confirmation.",
   paymentReference: undefined,
   notificationSummary: {
     pending: 1,
@@ -405,6 +488,8 @@ const rescheduleAuditEvents: BookingAuditEvent[] = [
 const lifecycle: SchedulingLifecycleSummary = {
   workflowState: "confirmed",
   status: "confirmed",
+  createdAt: "2025-05-16T16:57:00Z",
+  confirmedAt: "2025-05-16T17:01:00Z",
   lastDecisionCode: "payment_satisfied_fake",
   lastAuditEventId: "evt_notification",
   checkpointExists: true,
@@ -415,6 +500,9 @@ const lifecycle: SchedulingLifecycleSummary = {
 const cancelledLifecycle: SchedulingLifecycleSummary = {
   workflowState: "cancelled",
   status: "cancelled",
+  createdAt: "2025-05-16T16:57:00Z",
+  confirmedAt: "2025-05-16T17:01:00Z",
+  cancelledAt: "2025-05-16T18:15:00Z",
   lastDecisionCode: "accepted_confirmed_booking",
   lastAuditEventId: "evt_notification_cancelled",
   checkpointExists: true,
@@ -424,6 +512,8 @@ const cancelledLifecycle: SchedulingLifecycleSummary = {
 const rescheduledLifecycle: SchedulingLifecycleSummary = {
   workflowState: "rescheduled",
   status: "rescheduled",
+  createdAt: "2025-05-16T16:57:00Z",
+  confirmedAt: "2025-05-16T17:01:00Z",
   lastDecisionCode: "replacement_confirmed",
   lastAuditEventId: "evt_rescheduled",
   checkpointExists: true,
@@ -512,10 +602,14 @@ const scenarios: Record<SchedulingFixtureKey, SchedulingFixtureScenario> = {
       "provider-setup",
       "setup",
       "Provider setup",
-      "Unsafe local-dev admin path with generated public link, ownership context, and sensible default configuration steps.",
+      "Guided local-dev setup for creating a provider, resource, service, and weekly availability without knowing Leviathan internals.",
       "/apps/scheduling/setup",
     ),
     localDevContext,
+    setupProvider,
+    setupResource,
+    setupService,
+    setupAvailabilityRule,
   },
   "public-booking": {
     ...baseScenario(
@@ -550,10 +644,10 @@ const scenarios: Record<SchedulingFixtureKey, SchedulingFixtureScenario> = {
       "/apps/scheduling/bookings",
     ),
     localDevContext,
-    bookings: [confirmedBooking, cancelledBooking, rescheduledBooking, replacementBooking],
-    selectedBooking: rescheduledBooking,
-    auditEvents: rescheduleAuditEvents,
-    lifecycle: rescheduledLifecycle,
+    bookings: [cancelledBooking, rescheduledBooking, replacementBooking, confirmedBooking],
+    selectedBooking: cancelledBooking,
+    auditEvents: cancelledAuditEvents,
+    lifecycle: cancelledLifecycle,
   },
   "payment-required": {
     ...baseScenario(

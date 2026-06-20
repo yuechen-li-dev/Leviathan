@@ -79,6 +79,8 @@ describe("scheduling frontend module", () => {
     expect(html).toContain("Local/dev admin mode");
     expect(html).toContain("LEVIATHAN_ALLOW_UNSAFE_ADMIN=true");
     expect(html).toContain("/book/demo");
+    expect(html).toContain("Set up bookable availability");
+    expect(html).toContain("Setup checklist");
   });
 
   it("provider setup view renders local-dev ownership context without account entry", () => {
@@ -108,7 +110,7 @@ describe("scheduling frontend module", () => {
 
   it("ownership errors render useful provider setup copy", () => {
     const html = renderToStaticMarkup(createElement(ProviderSetupView, { errorMessage: "provider_owner_forbidden" }));
-    expect(html).toContain("not owned by the current local-dev Scheduling installation");
+    expect(html).toContain("This provider is not owned by the current local-dev Scheduling installation");
   });
 
   it("admin gate error displays useful message", () => {
@@ -133,6 +135,7 @@ describe("scheduling frontend module", () => {
   it("confirmation view includes booking id/timezone/ICS link when appropriate", () => {
     const html = renderToStaticMarkup(createElement(ConfirmationView, { booking: confirmedBooking, serviceName: "Consult", resourceName: "Ada" }));
     expect(html).toContain("Booking confirmed");
+    expect(html).toContain("What happens next");
     expect(html).toContain("b");
     expect(html).toContain("America/New_York");
     expect(html).toContain("/apps/scheduling/bookings/b/ics");
@@ -146,9 +149,10 @@ describe("scheduling frontend module", () => {
 
   it("confirmed booking detail renders payment and notification labels", () => {
     const html = renderToStaticMarkup(createElement(ProviderBookingsView, { bookings: [confirmedBooking] }));
-    expect(html).toContain("Payment satisfied (fake/local)");
-    expect(html).toContain("notifications pending 1");
+    expect(html).toContain("Payment satisfied (local test)");
+    expect(html).toContain("Notifications pending 1");
     expect(html).toContain("Cancel booking");
+    expect(html).toContain("Inspect lifecycle");
   });
 
   it("cancelled booking status renders without ICS", () => {
@@ -174,15 +178,40 @@ describe("scheduling frontend module", () => {
       }),
     );
     expect(html).toContain("booking.cancelled");
-    expect(html).toContain("Lifecycle state: cancelled");
-    expect(html).toContain("Last audit event id: evt");
-    expect(html).toContain("Cancellation reason: provider_cancelled");
+    expect(html).toContain("Current state");
+    expect(html).toContain("Last audit event id");
+    expect(html).toContain("Cancellation reason");
+    expect(html).toContain("provider_cancelled");
     expect(html).toContain("Payment required");
   });
 
   it("renders useful scheduling errors", () => {
     const html = renderToStaticMarkup(createElement(SlotPickerView as any, { errorMessage: "payment_required" }));
     expect(html).toContain("Payment is required before confirmation");
+  });
+
+  it("provider setup fixture result card renders generated booking link and summary", () => {
+    const scenario = resolveSchedulingFixtureScenario({ pathname: "/apps/scheduling/setup", search: "?fixture=provider-setup" });
+    const html = renderToStaticMarkup(
+      createElement(ProviderSetupView, {
+        providerSlug: scenario.providerSlug,
+        providerTimeZone: scenario.providerTimeZone,
+        localDevContext: scenario.localDevContext,
+        provider: scenario.setupProvider,
+        resource: scenario.setupResource,
+        service: scenario.setupService,
+        availabilityRule: scenario.setupAvailabilityRule,
+      }),
+    );
+    expect(html).toContain("Your public booking page is ready");
+    expect(html).toContain("Open booking page");
+    expect(html).toContain("Provider: prov_demo");
+    expect(html).toContain("Availability rule: avail_demo_weekdays");
+  });
+
+  it("notification summary copy stays honest about provider connections", () => {
+    const html = renderToStaticMarkup(createElement(ConfirmationView, { booking: confirmedBooking, serviceName: "Consult", resourceName: "Ada" }));
+    expect(html).toContain("no real email/SMS provider connected");
   });
 
   it("calendar wrapper marks selected, available, and unavailable fixture dates accessibly", () => {
