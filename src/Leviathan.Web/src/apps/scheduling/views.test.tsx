@@ -9,6 +9,7 @@ import {
   AdminModeBanner,
   BookingCalendarRegionView,
   BookingDebugPanel,
+  BookingReschedulePanel,
   ConfirmationView,
   ProviderBookingsView,
   ProviderSetupView,
@@ -47,6 +48,7 @@ describe("scheduling frontend module", () => {
   it("declares expected API endpoints", () => {
     expect(schedulingEndpoints.holds).toBe("/apps/scheduling/holds");
     expect(schedulingEndpoints.publicSlots("demo", "svc", "a", "b", "UTC")).toContain("/apps/scheduling/public/demo/slots");
+    expect(schedulingEndpoints.createReplacementHold("book_123")).toBe("/apps/scheduling/bookings/book_123/reschedule/holds");
   });
 
   it("scheduling API client calls cancel endpoint correctly", async () => {
@@ -160,6 +162,58 @@ describe("scheduling frontend module", () => {
     expect(html).toContain("Cancelled");
     expect(html).not.toContain("Cancel booking");
     expect(html).not.toContain("/ics");
+  });
+
+  it("reschedule panel shows safe replacement copy only for confirmed bookings", () => {
+    const confirmedHtml = renderToStaticMarkup(
+      createElement(BookingReschedulePanel, {
+        booking: confirmedBooking,
+        fixtureState: { stage: "available", oldBooking: confirmedBooking },
+        providerSlug: "demo-provider",
+      }),
+    );
+    const cancelledHtml = renderToStaticMarkup(
+      createElement(BookingReschedulePanel, {
+        booking: { ...confirmedBooking, status: "cancelled" },
+        fixtureState: { stage: "available", oldBooking: { ...confirmedBooking, status: "cancelled" } },
+        providerSlug: "demo-provider",
+      }),
+    );
+
+    expect(confirmedHtml).toContain("Your current booking stays confirmed until the new time is confirmed.");
+    expect(confirmedHtml).toContain("Reschedule");
+    expect(cancelledHtml).toBe("");
+    expect(cancelledHtml).not.toContain("Create replacement hold");
+  });
+
+  it("reschedule picker fixture renders replacement slot comparison", () => {
+    const scenario = resolveSchedulingFixtureScenario({ pathname: "/book/demo-provider/confirmed/book_demo_confirmed", search: "?fixture=reschedule-picker" });
+    const html = renderToStaticMarkup(
+      createElement(BookingReschedulePanel, {
+        booking: scenario.booking!,
+        fixtureState: scenario.rescheduleState,
+        providerSlug: scenario.providerSlug,
+      }),
+    );
+
+    expect(html).toContain("Choose a replacement time");
+    expect(html).toContain("Current time");
+    expect(html).toContain("Selected replacement");
+  });
+
+  it("reschedule result fixture renders old and new booking relations", () => {
+    const scenario = resolveSchedulingFixtureScenario({ pathname: "/book/demo-provider/confirmed/book_demo_rescheduled_old", search: "?fixture=reschedule-result" });
+    const html = renderToStaticMarkup(
+      createElement(BookingReschedulePanel, {
+        booking: scenario.booking!,
+        fixtureState: scenario.rescheduleState,
+        providerSlug: scenario.providerSlug,
+      }),
+    );
+
+    expect(html).toContain("Replacement confirmed");
+    expect(html).toContain("Rescheduled to book_demo_rescheduled_new.");
+    expect(html).toContain("Rescheduled from book_demo_rescheduled_old.");
   });
 
   it("audit/lifecycle panel renders mocked summaries", () => {

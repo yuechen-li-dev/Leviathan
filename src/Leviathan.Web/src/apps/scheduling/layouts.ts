@@ -99,10 +99,20 @@ export const buildSchedulingLayout = (
   const confirmationDetailsY = confirmationHeroHeight + confirmationGap;
   const confirmationNextStepsY = confirmationDetailsY + confirmationDetailsHeight + confirmationGap;
   const confirmationActionsY = confirmationNextStepsY + confirmationNextStepsHeight + confirmationGap;
-  const confirmationLifecycleY = confirmationActionsY + confirmationActionsHeight + confirmationGap;
+  const confirmationRescheduleHeight = Math.max(168, Math.min(260, Math.round(mainHeight * 0.28)));
+  const confirmationRescheduleY = confirmationActionsY + confirmationActionsHeight + confirmationGap;
+  const confirmationLifecycleY = confirmationRescheduleY + confirmationRescheduleHeight + confirmationGap;
   const confirmationLifecycleHeight = Math.max(60, mainHeight - confirmationLifecycleY);
-  const providerListHeight = Math.max(240, Math.round(mainHeight * 0.52));
-  const providerDetailHeight = Math.max(220, mainHeight - providerListHeight - 16);
+  const rescheduleCurrentHeight = Math.max(40, Math.round(confirmationRescheduleHeight * 0.18));
+  const reschedulePickerHeight = Math.max(40, Math.round(confirmationRescheduleHeight * 0.22));
+  const rescheduleReplacementHeight = Math.max(40, Math.round(confirmationRescheduleHeight * 0.2));
+  const rescheduleActionsHeight = Math.max(34, Math.round(confirmationRescheduleHeight * 0.14));
+  const rescheduleResultHeight = Math.max(34, confirmationRescheduleHeight - rescheduleCurrentHeight - reschedulePickerHeight - rescheduleReplacementHeight - rescheduleActionsHeight - confirmationGap * 4);
+  const providerStackAvailableHeight = Math.max(400, mainHeight - 32);
+  const providerExtraHeight = Math.max(0, providerStackAvailableHeight - 400);
+  const providerListHeight = 160 + Math.round(providerExtraHeight * 0.5);
+  const providerDetailHeight = 120 + Math.round(providerExtraHeight * 0.2);
+  const providerRescheduleHeight = providerStackAvailableHeight - providerListHeight - providerDetailHeight;
   const setupWide = rootRect.width >= 1180;
   const setupGap = 16;
   const setupHeroHeight = Math.max(80, Math.min(112, Math.round(mainHeight * 0.14)));
@@ -225,6 +235,42 @@ export const buildSchedulingLayout = (
             debugLabel: "Booking status actions",
           },
           {
+            id: "booking-reschedule-root",
+            parent: "booking-status-root",
+            frame: { kind: "absolute" as const, x: 0, y: confirmationRescheduleY, width: mainWidth, height: confirmationRescheduleHeight },
+            debugLabel: "Booking reschedule root",
+          },
+          {
+            id: "booking-reschedule-current",
+            parent: "booking-reschedule-root",
+            frame: { kind: "absolute" as const, x: 0, y: 0, width: mainWidth, height: rescheduleCurrentHeight },
+            debugLabel: "Booking reschedule current summary",
+          },
+          {
+            id: "booking-reschedule-picker",
+            parent: "booking-reschedule-root",
+            frame: { kind: "absolute" as const, x: 0, y: rescheduleCurrentHeight + confirmationGap, width: mainWidth, height: reschedulePickerHeight },
+            debugLabel: "Booking reschedule picker",
+          },
+          {
+            id: "booking-reschedule-replacement",
+            parent: "booking-reschedule-root",
+            frame: { kind: "absolute" as const, x: 0, y: rescheduleCurrentHeight + reschedulePickerHeight + confirmationGap * 2, width: mainWidth, height: rescheduleReplacementHeight },
+            debugLabel: "Booking reschedule replacement",
+          },
+          {
+            id: "booking-reschedule-actions",
+            parent: "booking-reschedule-root",
+            frame: { kind: "absolute" as const, x: 0, y: rescheduleCurrentHeight + reschedulePickerHeight + rescheduleReplacementHeight + confirmationGap * 3, width: mainWidth, height: rescheduleActionsHeight },
+            debugLabel: "Booking reschedule actions",
+          },
+          {
+            id: "booking-reschedule-result",
+            parent: "booking-reschedule-root",
+            frame: { kind: "absolute" as const, x: 0, y: rescheduleCurrentHeight + reschedulePickerHeight + rescheduleReplacementHeight + rescheduleActionsHeight + confirmationGap * 4, width: mainWidth, height: rescheduleResultHeight },
+            debugLabel: "Booking reschedule result",
+          },
+          {
             id: "booking-status-lifecycle",
             parent: "booking-status-root",
             frame: { kind: "absolute" as const, x: 0, y: confirmationLifecycleY, width: mainWidth, height: confirmationLifecycleHeight },
@@ -259,6 +305,30 @@ export const buildSchedulingLayout = (
               parent: "provider-bookings-root",
               frame: { kind: "fixed" as const, width: mainWidth, height: providerDetailHeight },
               debugLabel: "Provider booking detail",
+            },
+            {
+              id: "booking-reschedule-root",
+              parent: "provider-bookings-root",
+              frame: { kind: "fixed" as const, width: mainWidth, height: providerRescheduleHeight },
+              debugLabel: "Provider booking reschedule root",
+            },
+            {
+              id: "booking-reschedule-current",
+              parent: "booking-reschedule-root",
+              frame: { kind: "absolute" as const, x: 0, y: 0, width: mainWidth, height: Math.max(40, Math.round(providerRescheduleHeight * 0.22)) },
+              debugLabel: "Provider booking reschedule current",
+            },
+            {
+              id: "booking-reschedule-actions",
+              parent: "booking-reschedule-root",
+              frame: { kind: "absolute" as const, x: 0, y: Math.max(48, Math.round(providerRescheduleHeight * 0.26)), width: mainWidth, height: Math.max(36, Math.round(providerRescheduleHeight * 0.18)) },
+              debugLabel: "Provider booking reschedule actions",
+            },
+            {
+              id: "booking-reschedule-result",
+              parent: "booking-reschedule-root",
+              frame: { kind: "absolute" as const, x: 0, y: Math.max(92, Math.round(providerRescheduleHeight * 0.5)), width: mainWidth, height: Math.max(48, Math.round(providerRescheduleHeight * 0.42)) },
+              debugLabel: "Provider booking reschedule result",
             },
           ]
         : [

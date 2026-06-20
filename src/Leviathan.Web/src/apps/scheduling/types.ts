@@ -41,6 +41,14 @@ export type HoldResponse = {
   paymentRequiredAt?: string | null;
   paymentSatisfiedAt?: string | null;
 };
+export type ReplacementHoldResponse = {
+  oldBookingId: string;
+  replacementHoldId: string;
+  claimToken: string;
+  targetSlot: BookableSlot;
+  auditEventId?: string | null;
+  lifecycle?: SchedulingLifecycleSummary | null;
+};
 export type NotificationSummary = { pending: number; sentFake: number; cancelled: number; skipped: number; failed: number; deferredProviderUnavailable: number };
 export type ScheduledNotification = {
   id: EntityId;
@@ -86,18 +94,36 @@ export type Booking = {
   notificationSummary?: NotificationSummary;
   rescheduledToBookingId?: string;
   rescheduledFromBookingId?: string;
+  replacementHoldId?: string;
+  replacementBookingId?: string;
+  rescheduledAt?: string | null;
+  rescheduleReasonCode?: string | null;
+  rescheduleMessage?: string | null;
+  rescheduleActor?: string | null;
 };
 export type BookingAuditEvent = { eventId: string; eventType: string; occurredAt: string; actor?: string; message?: string; data?: Record<string, string> };
 export type SchedulingLifecycleSummary = {
-  workflowState: string;
   status: string;
+  workflowState?: string;
+  currentWorkflowState?: string;
+  providerId?: string;
+  resourceId?: string;
+  serviceId?: string;
+  holdId?: string;
+  bookingId?: string | null;
   createdAt?: string | null;
+  updatedAt?: string | null;
+  expiresAt?: string | null;
   confirmedAt?: string | null;
   cancelledAt?: string | null;
   lastDecisionCode?: string;
   lastAuditEventId?: string;
   checkpointExists?: boolean;
+  hasCheckpoint?: boolean;
   checkpointPath?: string;
+  rescheduledFromBookingId?: string | null;
+  rescheduledToBookingId?: string | null;
+  replacementHoldId?: string | null;
   paymentStatus?: string;
   paymentRequirementStatus?: string;
   paymentReference?: string;

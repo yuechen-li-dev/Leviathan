@@ -9,6 +9,7 @@ import type {
   HoldResponse,
   LocalDevPlatformContext,
   Provider,
+  ReplacementHoldResponse,
   ScheduledNotification,
   SchedulingLifecycleSummary,
   SchedulingNotificationPolicy,
@@ -30,6 +31,7 @@ export const schedulingEndpoints = {
   holdLifecycle: (holdId: string, providerId: string) => `/apps/scheduling/holds/${encodeURIComponent(holdId)}/lifecycle?providerId=${encodeURIComponent(providerId)}`,
   bookingIcs: (bookingId: string) => `/apps/scheduling/bookings/${encodeURIComponent(bookingId)}/ics`,
   cancelBooking: (bookingId: string) => `/apps/scheduling/bookings/${encodeURIComponent(bookingId)}/cancel`,
+  createReplacementHold: (bookingId: string) => `/apps/scheduling/bookings/${encodeURIComponent(bookingId)}/reschedule/holds`,
   bookingNotifications: (bookingId: string) => `/apps/scheduling/bookings/${encodeURIComponent(bookingId)}/notifications`,
   fakeSendNotification: (notificationId: string) => `/apps/scheduling/notifications/${encodeURIComponent(notificationId)}/fake-send`,
   assignResource: (serviceId: string) => `/apps/scheduling/services/${encodeURIComponent(serviceId)}/resources`,
@@ -59,6 +61,34 @@ export const getBookingLifecycle = (bookingId: string) => api<SchedulingLifecycl
 export const getHoldLifecycle = (holdId: string, providerId: string) => api<SchedulingLifecycleSummary>(schedulingEndpoints.holdLifecycle(holdId, providerId));
 export const getBookingNotifications = (bookingId: string) => api<ScheduledNotification[]>(schedulingEndpoints.bookingNotifications(bookingId));
 export const cancelBooking = (bookingId: string, reason = "provider_cancelled", message?: string, actor = "local-dev-admin") => api<CancelBookingResponse>(schedulingEndpoints.cancelBooking(bookingId), { method: "POST", body: JSON.stringify({ reason, message, actor }) });
+export const createReplacementHold = (
+  bookingId: string,
+  body: {
+    serviceId: string;
+    resourceId: string;
+    startUtc: string;
+    endUtc: string;
+    timeZoneId: string;
+    displayTimeZoneId?: string;
+    reason?: string;
+    message?: string;
+    actor?: string;
+  },
+) =>
+  api<ReplacementHoldResponse>(schedulingEndpoints.createReplacementHold(bookingId), {
+    method: "POST",
+    body: JSON.stringify({
+      serviceId: body.serviceId,
+      resourceId: body.resourceId,
+      startUtc: body.startUtc,
+      endUtc: body.endUtc,
+      timeZoneId: body.timeZoneId,
+      displayTimeZoneId: body.displayTimeZoneId,
+      reason: body.reason ?? "customer_requested",
+      message: body.message,
+      actor: body.actor ?? "local-dev-admin",
+    }),
+  });
 export const getPublicProvider = (slug: string) => api<Provider>(schedulingEndpoints.publicProvider(slug));
 export const getPublicServices = (slug: string) => api<SchedulingService[]>(schedulingEndpoints.publicServices(slug));
 export const listSlots = (slug: string, serviceId: string, from: string, to: string, timeZone = "UTC") => api<BookableSlot[]>(schedulingEndpoints.publicSlots(slug, serviceId, from, to, timeZone));

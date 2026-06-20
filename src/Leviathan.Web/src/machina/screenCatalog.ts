@@ -19,7 +19,11 @@ export type LeviathanScreenKey =
   | "booking-confirmation"
   | "cancelled-rescheduled"
   | "payment-required"
-  | "notification-summary";
+  | "notification-summary"
+  | "reschedule-available"
+  | "reschedule-picker"
+  | "reschedule-result"
+  | "rescheduled-booking-detail";
 
 export type LeviathanScreenMetadata = {
   productArea: "apps" | "scheduling";
@@ -198,6 +202,95 @@ const screens: readonly MachinaScreen[] = [
     } satisfies LeviathanScreenMetadata,
   },
   {
+    key: "reschedule-available",
+    title: "Reschedule available",
+    route: "/book/demo-provider/confirmed/book_demo_confirmed?debug=1&fixture=reschedule-available",
+    fixture: "reschedule-available",
+    viewports: ["desktop"],
+    tags: ["scheduling", "fixture", "mocked", "confirmation", "reschedule"],
+    metadata: {
+      productArea: "scheduling",
+      captureSource: "fixture-or-live",
+      supportsLiveRoute: true,
+      artifactBaseName: "reschedule-available",
+      expectedHeading: "Booking confirmed",
+      expectedNodeIds: [
+        "scheduling-hero",
+        "scheduling-main",
+        "booking-status-root",
+        "booking-status-hero",
+        "booking-status-details",
+        "booking-status-next-steps",
+        "booking-status-actions",
+        "booking-reschedule-root",
+        "booking-reschedule-current",
+        "booking-reschedule-actions",
+        "booking-status-lifecycle",
+        "scheduling-sidebar",
+        "debug-inspector",
+      ],
+      expectedText: "Your current booking stays confirmed until the new time is confirmed.",
+      expectedMachinaRoute: "scheduling",
+    } satisfies LeviathanScreenMetadata,
+  },
+  {
+    key: "reschedule-picker",
+    title: "Reschedule picker",
+    route: "/book/demo-provider/confirmed/book_demo_confirmed?debug=1&fixture=reschedule-picker",
+    fixture: "reschedule-picker",
+    viewports: ["desktop"],
+    tags: ["scheduling", "fixture", "mocked", "confirmation", "reschedule"],
+    metadata: {
+      productArea: "scheduling",
+      captureSource: "fixture-or-live",
+      supportsLiveRoute: true,
+      artifactBaseName: "reschedule-picker",
+      expectedHeading: "Booking confirmed",
+      expectedNodeIds: [
+        "scheduling-hero",
+        "scheduling-main",
+        "booking-status-root",
+        "booking-reschedule-root",
+        "booking-reschedule-current",
+        "booking-reschedule-picker",
+        "booking-reschedule-replacement",
+        "booking-reschedule-actions",
+        "scheduling-sidebar",
+        "debug-inspector",
+      ],
+      expectedText: "Choose a replacement time",
+      expectedMachinaRoute: "scheduling",
+    } satisfies LeviathanScreenMetadata,
+  },
+  {
+    key: "reschedule-result",
+    title: "Reschedule result",
+    route: "/book/demo-provider/confirmed/book_demo_rescheduled_old?debug=1&fixture=reschedule-result",
+    fixture: "reschedule-result",
+    viewports: ["desktop"],
+    tags: ["scheduling", "fixture", "mocked", "confirmation", "reschedule"],
+    metadata: {
+      productArea: "scheduling",
+      captureSource: "fixture-or-live",
+      supportsLiveRoute: true,
+      artifactBaseName: "reschedule-result",
+      expectedHeading: "Booking rescheduled",
+      expectedNodeIds: [
+        "scheduling-hero",
+        "scheduling-main",
+        "booking-status-root",
+        "booking-reschedule-root",
+        "booking-reschedule-current",
+        "booking-reschedule-result",
+        "booking-status-lifecycle",
+        "scheduling-sidebar",
+        "debug-inspector",
+      ],
+      expectedText: "Replacement confirmed",
+      expectedMachinaRoute: "scheduling",
+    } satisfies LeviathanScreenMetadata,
+  },
+  {
     key: "cancelled-rescheduled",
     title: "Cancelled and rescheduled bookings",
     route: "/apps/scheduling/bookings?debug=1&fixture=cancelled-rescheduled",
@@ -220,6 +313,34 @@ const screens: readonly MachinaScreen[] = [
         "debug-inspector",
       ],
       expectedText: "Cancelled",
+      expectedMachinaRoute: "scheduling",
+    } satisfies LeviathanScreenMetadata,
+  },
+  {
+    key: "rescheduled-booking-detail",
+    title: "Rescheduled booking detail",
+    route: "/apps/scheduling/bookings?debug=1&fixture=rescheduled-booking-detail",
+    fixture: "rescheduled-booking-detail",
+    viewports: ["desktop"],
+    tags: ["scheduling", "fixture", "mocked", "bookings", "reschedule"],
+    metadata: {
+      productArea: "scheduling",
+      captureSource: "fixture-or-live",
+      supportsLiveRoute: true,
+      artifactBaseName: "rescheduled-booking-detail",
+      expectedHeading: "Provider bookings",
+      expectedNodeIds: [
+        "scheduling-hero",
+        "scheduling-main",
+        "provider-bookings-root",
+        "provider-bookings-list",
+        "provider-booking-detail",
+        "booking-reschedule-root",
+        "booking-reschedule-result",
+        "scheduling-sidebar",
+        "debug-inspector",
+      ],
+      expectedText: "Replacement already confirmed",
       expectedMachinaRoute: "scheduling",
     } satisfies LeviathanScreenMetadata,
   },

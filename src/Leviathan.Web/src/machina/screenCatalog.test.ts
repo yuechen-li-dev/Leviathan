@@ -27,7 +27,11 @@ describe("screen catalog", () => {
       "booking-confirmation-desktop",
       "booking-confirmation-tablet",
       "booking-confirmation-phone",
+      "reschedule-available-desktop",
+      "reschedule-picker-desktop",
+      "reschedule-result-desktop",
       "cancelled-rescheduled-desktop",
+      "rescheduled-booking-detail-desktop",
       "payment-required-desktop",
       "notification-summary-desktop",
     ]);
@@ -101,5 +105,35 @@ describe("screen catalog", () => {
       "/apps?debug=1&debugOverlay=nonInteractiveOverlay",
     );
     expect(routeWithDebugOverlay("/apps?debug=1")).toBe("/apps?debug=1");
+  });
+
+  it("tracks the reschedule confirmation and provider-detail coverage", () => {
+    const screens = [
+      getLeviathanScreen("reschedule-available"),
+      getLeviathanScreen("reschedule-picker"),
+      getLeviathanScreen("reschedule-result"),
+      getLeviathanScreen("rescheduled-booking-detail"),
+    ];
+
+    expect(screens.map((screen) => screen.metadata)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          artifactBaseName: "reschedule-available",
+          expectedNodeIds: expect.arrayContaining(["booking-reschedule-root", "booking-reschedule-current", "booking-reschedule-actions"]),
+        }),
+        expect.objectContaining({
+          artifactBaseName: "reschedule-picker",
+          expectedNodeIds: expect.arrayContaining(["booking-reschedule-picker", "booking-reschedule-replacement"]),
+        }),
+        expect.objectContaining({
+          artifactBaseName: "reschedule-result",
+          expectedNodeIds: expect.arrayContaining(["booking-reschedule-result"]),
+        }),
+        expect.objectContaining({
+          artifactBaseName: "rescheduled-booking-detail",
+          expectedNodeIds: expect.arrayContaining(["provider-booking-detail", "booking-reschedule-root"]),
+        }),
+      ]),
+    );
   });
 });

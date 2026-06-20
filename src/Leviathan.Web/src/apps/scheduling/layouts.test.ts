@@ -180,6 +180,12 @@ describe("scheduling layout geometry", () => {
         "booking-status-details",
         "booking-status-next-steps",
         "booking-status-actions",
+        "booking-reschedule-root",
+        "booking-reschedule-current",
+        "booking-reschedule-picker",
+        "booking-reschedule-replacement",
+        "booking-reschedule-actions",
+        "booking-reschedule-result",
         "booking-status-lifecycle",
       ]),
     );
@@ -195,6 +201,10 @@ describe("scheduling layout geometry", () => {
         "provider-bookings-root",
         "provider-bookings-list",
         "provider-booking-detail",
+        "booking-reschedule-root",
+        "booking-reschedule-current",
+        "booking-reschedule-actions",
+        "booking-reschedule-result",
       ]),
     );
     expect(() => resolveLayoutRows(rows, rootRect)).not.toThrow();

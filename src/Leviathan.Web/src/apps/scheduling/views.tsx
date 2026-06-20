@@ -10,6 +10,7 @@ import type {
   LocalDevPlatformContext,
   NotificationSummary,
   Provider,
+  ReplacementHoldResponse,
   ScheduledNotification,
   SchedulingLifecycleSummary,
   SchedulingService,
@@ -39,6 +40,7 @@ import {
   assignResourceToService,
   cancelBooking,
   confirmBooking,
+  createReplacementHold,
   createAvailabilityRule,
   createHold,
   createProvider,
@@ -643,6 +645,15 @@ export function SchedulingMainView(props: SlotProps) {
           auditEvents={scenario.auditEvents}
           lifecycle={scenario.lifecycle}
           errorMessage={scenario.errorMessage}
+          reschedulePanel={
+            scenario.selectedBooking ? (
+              <BookingReschedulePanel
+                booking={scenario.rescheduleState?.oldBooking ?? scenario.selectedBooking}
+                fixtureState={scenario.rescheduleState}
+                providerSlug={scenario.providerSlug}
+              />
+            ) : undefined
+          }
         />
       )}
     </section>
@@ -2104,6 +2115,7 @@ export function ConfirmationView({
   serviceName = "Service",
   resourceName = "Resource",
   actions,
+  reschedulePanel,
   lifecycle,
   auditEvents,
 }: {
@@ -2111,6 +2123,7 @@ export function ConfirmationView({
   serviceName?: string;
   resourceName?: string;
   actions?: ReactNode;
+  reschedulePanel?: ReactNode;
   lifecycle?: SchedulingLifecycleSummary;
   auditEvents?: BookingAuditEvent[];
 }) {
@@ -2164,6 +2177,18 @@ export function ConfirmationView({
             <dd>Google Meet</dd>
             <dt>Reference</dt>
             <dd>{bookingId}</dd>
+            {booking.rescheduledToBookingId ? (
+              <>
+                <dt>Rescheduled to</dt>
+                <dd>{booking.rescheduledToBookingId}</dd>
+              </>
+            ) : null}
+            {booking.rescheduledFromBookingId ? (
+              <>
+                <dt>Rescheduled from</dt>
+                <dd>{booking.rescheduledFromBookingId}</dd>
+              </>
+            ) : null}
           </dl>
         </CardContent>
       </Card>
@@ -2206,6 +2231,8 @@ export function ConfirmationView({
         </CardContent>
       </Card>
 
+      {reschedulePanel}
+
       <BookingMetaPanels booking={booking} notificationSummary={lifecycle?.notificationSummary ?? booking.notificationSummary} />
 
       {lifecycle || auditEvents?.length ? (
@@ -2221,12 +2248,14 @@ export function ProviderBookingsView({
   auditEvents = [],
   lifecycle,
   errorMessage,
+  reschedulePanel,
 }: {
   bookings?: Booking[];
   selectedBooking?: Booking;
   auditEvents?: BookingAuditEvent[];
   lifecycle?: SchedulingLifecycleSummary;
   errorMessage?: string;
+  reschedulePanel?: ReactNode;
 }) {
   return (
     <div className="scheduling-stack" data-testid="provider-bookings-root">
@@ -2310,6 +2339,8 @@ export function ProviderBookingsView({
         </div>
       </section>
 
+      {reschedulePanel}
+
       {selectedBooking ? <BookingDebugPanel booking={selectedBooking} auditEvents={auditEvents} lifecycle={lifecycle} /> : null}
     </div>
   );
@@ -2344,7 +2375,7 @@ export function BookingDebugPanel({
           <h4>Lifecycle summary</h4>
           <dl className="scheduling-definition-list">
             <dt>Current state</dt>
-            <dd>{lifecycle?.workflowState ?? "unknown"}</dd>
+            <dd>{lifecycleStateLabel(lifecycle)}</dd>
             <dt>Decision/policy result</dt>
             <dd>{lifecycle?.lastDecisionCode ?? booking.cancellationPolicyResult ?? "unknown"}</dd>
             <dt>Created</dt>
@@ -2356,7 +2387,7 @@ export function BookingDebugPanel({
             <dt>Last audit event id</dt>
             <dd>{lifecycle?.lastAuditEventId ?? "none"}</dd>
             <dt>Checkpoint exists</dt>
-            <dd>{String(lifecycle?.checkpointExists ?? !!lifecycle?.checkpointPath)}</dd>
+            <dd>{String(hasLifecycleCheckpoint(lifecycle) || !!lifecycle?.checkpointPath)}</dd>
             {booking.cancellationReasonCode ? (
               <>
                 <dt>Cancellation reason</dt>
@@ -2379,6 +2410,12 @@ export function BookingDebugPanel({
               <>
                 <dt>Rescheduled from</dt>
                 <dd>{booking.rescheduledFromBookingId}</dd>
+              </>
+            ) : null}
+            {booking.replacementHoldId ?? lifecycle?.replacementHoldId ? (
+              <>
+                <dt>Replacement hold</dt>
+                <dd>{booking.replacementHoldId ?? lifecycle?.replacementHoldId}</dd>
               </>
             ) : null}
           </dl>
@@ -2455,6 +2492,427 @@ function PublicBookingFlowView({
   );
 }
 
+type BookingRescheduleFixtureState = {
+  stage: "available" | "picker" | "replacement" | "result";
+  slots?: BookableSlot[];
+  selectedSlot?: BookableSlot;
+  replacementHold?: ReplacementHoldResponse | null;
+  replacementBooking?: Booking | null;
+  oldBooking?: Booking | null;
+  lifecycle?: SchedulingLifecycleSummary | null;
+  errorMessage?: string;
+};
+
+export function BookingReschedulePanel(props: {
+  booking: Booking;
+  providerSlug?: string;
+  serviceName?: string;
+  actor?: string;
+  fixtureState?: BookingRescheduleFixtureState;
+  onOriginalBookingUpdated?: (booking: Booking) => void;
+  onReplacementConfirmed?: (nextBooking: Booking, oldBooking: Booking) => void;
+}) {
+  const live = !props.fixtureState;
+  const eligible = isBookingReschedulable(props.booking);
+  const [expanded, setExpanded] = useState(Boolean(props.fixtureState && props.fixtureState.stage !== "available"));
+  const [slots, setSlots] = useState<BookableSlot[]>(props.fixtureState?.slots ?? []);
+  const [selectedSlotKey, setSelectedSlotKey] = useState<string | undefined>(props.fixtureState?.selectedSlot ? slotKey(props.fixtureState.selectedSlot) : undefined);
+  const [replacementHold, setReplacementHold] = useState<ReplacementHoldResponse | null>(props.fixtureState?.replacementHold ?? null);
+  const [replacementBooking, setReplacementBooking] = useState<Booking | null>(props.fixtureState?.replacementBooking ?? null);
+  const [oldBookingAfterReschedule, setOldBookingAfterReschedule] = useState<Booking | null>(props.fixtureState?.oldBooking ?? null);
+  const [replacementLifecycle, setReplacementLifecycle] = useState<SchedulingLifecycleSummary | null | undefined>(props.fixtureState?.lifecycle);
+  const [selectedDateKey, setSelectedDateKey] = useState<string | undefined>(props.fixtureState?.selectedSlot ? dateKeyForSlot(props.fixtureState.selectedSlot) : undefined);
+  const [calendarMonthKey, setCalendarMonthKey] = useState<string | undefined>(props.fixtureState?.selectedSlot ? monthKeyForDate(dateFromDateKey(dateKeyForSlot(props.fixtureState.selectedSlot))) : undefined);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | undefined>(props.fixtureState?.errorMessage);
+  const [customer, setCustomer] = useState({
+    name: props.booking.customer.name,
+    email: props.booking.customer.email,
+    phone: props.booking.customer.phone ?? "",
+    notes: props.booking.customer.notes ?? "",
+  });
+  const replacementProviderSlug = props.providerSlug;
+  const replacementServiceId = props.booking.serviceId?.value;
+
+  useEffect(() => {
+    if (!props.fixtureState) return;
+    setExpanded(props.fixtureState.stage !== "available");
+    setSlots(props.fixtureState.slots ?? []);
+    setSelectedSlotKey(props.fixtureState.selectedSlot ? slotKey(props.fixtureState.selectedSlot) : undefined);
+    setReplacementHold(props.fixtureState.replacementHold ?? null);
+    setReplacementBooking(props.fixtureState.replacementBooking ?? null);
+    setOldBookingAfterReschedule(props.fixtureState.oldBooking ?? null);
+    setReplacementLifecycle(props.fixtureState.lifecycle);
+    setErrorMessage(props.fixtureState.errorMessage);
+  }, [props.fixtureState]);
+
+  useEffect(() => {
+    if (!live || !expanded || replacementHold || replacementBooking || !eligible) return;
+    if (!replacementProviderSlug || !replacementServiceId) return;
+    if (slots.length > 0 || busy === "slots") return;
+
+    void (async () => {
+      try {
+        setBusy("slots");
+        setErrorMessage(undefined);
+        const from = new Date();
+        const to = new Date(from.getTime() + 21 * 24 * 60 * 60 * 1000);
+        const listed = await listSlots(
+          replacementProviderSlug,
+          replacementServiceId,
+          from.toISOString(),
+          to.toISOString(),
+          browserTimeZone(),
+        );
+        setSlots(listed);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : String(error));
+      } finally {
+        setBusy(null);
+      }
+    })();
+  }, [busy, eligible, expanded, live, replacementBooking, replacementHold, replacementProviderSlug, replacementServiceId, slots.length]);
+
+  const replacementSlots = slots.filter((slot) => !slotMatchesBooking(slot, props.booking));
+  const availableDates = buildAvailableDates(replacementSlots);
+  const resolvedSelectedDateKey =
+    selectedDateKey && availableDates.some((entry) => entry.dateKey === selectedDateKey)
+      ? selectedDateKey
+      : availableDates[0]?.dateKey;
+  const months = buildMonthOptions(availableDates);
+  const resolvedMonthKey =
+    calendarMonthKey && months.some((entry) => entry.monthKey === calendarMonthKey)
+      ? calendarMonthKey
+      : resolvedSelectedDateKey
+        ? resolvedSelectedDateKey.slice(0, 7)
+        : months[0]?.monthKey;
+  const calendarMonth = monthDateFromMonthKey(resolvedMonthKey);
+  const calendarStartMonth = monthDateFromMonthKey(months[0]?.monthKey);
+  const calendarEndMonth = monthDateFromMonthKey(months.at(-1)?.monthKey);
+  const visibleSlots = replacementSlots.filter((slot) => !resolvedSelectedDateKey || dateKeyForSlot(slot) === resolvedSelectedDateKey);
+  const selectedSlot = replacementSlots.find((slot) => slotKey(slot) === selectedSlotKey) ?? props.fixtureState?.selectedSlot;
+  const currentBooking = oldBookingAfterReschedule ?? props.booking;
+  const showResult = Boolean(replacementBooking && oldBookingAfterReschedule);
+  const showReplacementFlow = expanded || Boolean(replacementHold) || showResult;
+  const paymentRequired =
+    replacementHold?.lifecycle?.paymentRequirementStatus === "payment_required" ||
+    replacementLifecycle?.paymentRequirementStatus === "payment_required" ||
+    isPaymentRequiredError(errorMessage);
+
+  async function createLiveReplacementHold() {
+    if (!live || !selectedSlot) return;
+    try {
+      setBusy("replacement-hold");
+      setErrorMessage(undefined);
+      const created = await createReplacementHold(props.booking.id.value, {
+        serviceId: selectedSlot.serviceId,
+        resourceId: selectedSlot.resourceId,
+        startUtc: selectedSlot.startsAtUtc,
+        endUtc: selectedSlot.endsAtUtc,
+        timeZoneId: selectedSlot.timeZoneId,
+        displayTimeZoneId: selectedSlot.displayTimeZoneId,
+        reason: "customer_requested",
+        actor: props.actor ?? "local-dev-admin",
+      });
+      setReplacementHold(created);
+      setReplacementLifecycle(created.lifecycle ?? null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function submitReplacementIntake() {
+    if (!live || !replacementHold) return;
+    try {
+      setBusy("replacement-intake");
+      setErrorMessage(undefined);
+      const updated = await submitIntake(replacementHold.replacementHoldId, replacementHold.claimToken, customer);
+      setReplacementLifecycle((current) => ({
+        status: current?.status ?? replacementHold.lifecycle?.status ?? "active",
+        ...(current ?? {}),
+        paymentRequirementStatus: updated.paymentRequirementStatus ?? current?.paymentRequirementStatus,
+        paymentReference: updated.paymentReference ?? current?.paymentReference,
+      }));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function satisfyReplacementPayment() {
+    if (!live || !replacementHold) return;
+    try {
+      setBusy("replacement-payment");
+      setErrorMessage(undefined);
+      const payment = await fakeSatisfyPayment(replacementHold.replacementHoldId, replacementHold.claimToken, props.actor ?? "local-dev-admin");
+      setReplacementLifecycle((current) => ({
+        status: current?.status ?? replacementHold.lifecycle?.status ?? "active",
+        ...(current ?? {}),
+        paymentRequirementStatus: payment.paymentRequirementStatus,
+        paymentReference: payment.paymentReference,
+      }));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function confirmReplacement() {
+    if (!live || !replacementHold) return;
+    try {
+      setBusy("replacement-confirm");
+      setErrorMessage(undefined);
+      const confirmed = await confirmBooking(replacementHold.replacementHoldId, replacementHold.claimToken, customer);
+      const oldBooking = await getBooking(props.booking.id.value);
+      setReplacementBooking(confirmed);
+      setOldBookingAfterReschedule(oldBooking);
+      props.onOriginalBookingUpdated?.(oldBooking);
+      props.onReplacementConfirmed?.(confirmed, oldBooking);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (!eligible && !hasRescheduleRelation(props.booking)) return null;
+
+  return (
+    <Card data-testid="booking-reschedule-root">
+      <CardHeader>
+        <CardTitle>Reschedule</CardTitle>
+        <CardDescription>Your current booking stays confirmed until the new time is confirmed.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!eligible ? (
+          <Alert>
+            <AlertTitle>{currentBooking.status === "rescheduled" ? "Replacement already confirmed" : "Reschedule unavailable"}</AlertTitle>
+            <AlertDescription>{bookingRescheduleStateCopy(currentBooking)}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="rounded-lg border p-4" data-testid="booking-reschedule-current">
+          <div className="scheduling-section-head">
+            <div>
+              <h4 className="font-semibold">Current booking</h4>
+              <p className="text-sm text-muted-foreground">{formatDateTimeRange(currentBooking.range)}</p>
+            </div>
+            <StatusChip tone={chipToneForValue(currentBooking.status)} label={statusLabel(currentBooking.status)} />
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">This stays active until a replacement booking is successfully confirmed.</p>
+          {renderRescheduleRelationBlock(currentBooking)}
+        </div>
+
+        {eligible && !showReplacementFlow ? (
+          <div className="flex flex-wrap gap-3" data-testid="booking-reschedule-actions">
+            <Button data-testid="booking-reschedule-open" onClick={() => setExpanded(true)} type="button">
+              Reschedule
+            </Button>
+            <p className="text-sm text-muted-foreground">Choose a replacement time without turning this into cancel-then-book.</p>
+          </div>
+        ) : null}
+
+        {showReplacementFlow ? (
+          <>
+            <Separator />
+            <section className="space-y-4" data-testid="booking-reschedule-picker">
+              <div className="scheduling-section-head">
+                <div>
+                  <h4 className="font-semibold">Choose a replacement time</h4>
+                  <p className="text-sm text-muted-foreground">Compare the current booking with a new available slot before you create the replacement hold.</p>
+                </div>
+                {busy === "slots" ? <StatusChip tone="warning" label="Loading slots" /> : null}
+              </div>
+              {replacementSlots.length ? (
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
+                  <Card>
+                    <CardContent className="pt-4">
+                      <Calendar
+                        disabled={(date) => !availableDates.some((entry) => entry.dateKey === dateKeyForDate(date))}
+                        mode="single"
+                        month={calendarMonth}
+                        onMonthChange={(month) => setCalendarMonthKey(monthKeyForDate(month))}
+                        onSelect={(date) => {
+                          if (!date) return;
+                          setSelectedDateKey(dateKeyForDate(date));
+                          setSelectedSlotKey(undefined);
+                        }}
+                        selected={resolvedSelectedDateKey ? dateFromDateKey(resolvedSelectedDateKey) : undefined}
+                        startMonth={calendarStartMonth}
+                        endMonth={calendarEndMonth}
+                      />
+                    </CardContent>
+                  </Card>
+                  <div className="space-y-3">
+                    <div className="rounded-lg border p-4">
+                      <p className="text-sm font-medium">Current time</p>
+                      <p className="text-sm text-muted-foreground">{formatDateTimeRange(currentBooking.range)}</p>
+                    </div>
+                    {visibleSlots.length ? (
+                      <div className="grid gap-2">
+                        {visibleSlots.map((slot) => {
+                          const selected = slotKey(slot) === selectedSlotKey;
+                          return (
+                            <Button
+                              data-testid="booking-reschedule-slot-option"
+                              key={slotKey(slot)}
+                              onClick={() => setSelectedSlotKey(slotKey(slot))}
+                              type="button"
+                              variant={selected ? "default" : "outline"}
+                            >
+                              {timeLabelForSlot(slot)} · {slot.displayTimeZoneId}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <Alert>
+                        <AlertTitle>No replacement slots available</AlertTitle>
+                        <AlertDescription>The backend still keeps the current booking confirmed. Pick another date if you need a replacement time.</AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <Alert>
+                  <AlertTitle>No replacement slots available</AlertTitle>
+                  <AlertDescription>No alternative slots are available for this service right now. The current booking remains active.</AlertDescription>
+                </Alert>
+              )}
+            </section>
+
+            {selectedSlot ? (
+              <section className="space-y-3" data-testid="booking-reschedule-replacement">
+                <div className="rounded-lg border p-4">
+                  <p className="text-sm font-medium">Selected replacement</p>
+                  <p className="text-sm text-muted-foreground">{selectedSlot.displayStartsAtLocal} to {selectedSlot.displayEndsAtLocal}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">{props.serviceName ?? "Service"} on resource {selectedSlot.resourceId}.</p>
+                </div>
+                {!replacementHold ? (
+                  <div className="flex flex-wrap gap-3" data-testid="booking-reschedule-actions">
+                    <Button data-testid="booking-reschedule-create-hold" disabled={!live || busy !== null} onClick={() => void createLiveReplacementHold()} type="button">
+                      {busy === "replacement-hold" ? "Creating replacement hold…" : "Create replacement hold"}
+                    </Button>
+                    <Button onClick={() => setExpanded(false)} type="button" variant="outline">
+                      Keep current time
+                    </Button>
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+          </>
+        ) : null}
+
+        {replacementHold ? (
+          <section className="space-y-4" data-testid="booking-reschedule-replacement">
+            <Alert>
+              <AlertTitle>Replacement hold created</AlertTitle>
+              <AlertDescription>
+                The original booking is still confirmed while this replacement hold is active.
+              </AlertDescription>
+            </Alert>
+            <div className="rounded-lg border p-4">
+              <dl className="scheduling-definition-list">
+                <dt>Old booking</dt>
+                <dd>{replacementHold.oldBookingId}</dd>
+                <dt>Replacement hold</dt>
+                <dd>{replacementHold.replacementHoldId}</dd>
+                <dt>Target slot</dt>
+                <dd>{formatSlotSummary(replacementHold.targetSlot)}</dd>
+                <dt>Lifecycle state</dt>
+                <dd>{lifecycleStateLabel(replacementHold.lifecycle ?? replacementLifecycle)}</dd>
+              </dl>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="replacement-name">Name</Label>
+                <Input id="replacement-name" onChange={(event) => setCustomer((current) => ({ ...current, name: event.target.value }))} value={customer.name} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="replacement-email">Email</Label>
+                <Input id="replacement-email" onChange={(event) => setCustomer((current) => ({ ...current, email: event.target.value }))} value={customer.email} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="replacement-phone">Phone</Label>
+                <Input id="replacement-phone" onChange={(event) => setCustomer((current) => ({ ...current, phone: event.target.value }))} value={customer.phone} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="replacement-notes">Notes</Label>
+                <Textarea id="replacement-notes" onChange={(event) => setCustomer((current) => ({ ...current, notes: event.target.value }))} value={customer.notes} />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3" data-testid="booking-reschedule-actions">
+              <Button data-testid="booking-reschedule-submit-intake" disabled={!live || busy !== null} onClick={() => void submitReplacementIntake()} type="button" variant="secondary">
+                {busy === "replacement-intake" ? "Saving details…" : "Save replacement details"}
+              </Button>
+              {paymentRequired ? (
+                <Button data-testid="booking-reschedule-fake-satisfy-payment" disabled={!live || busy !== null} onClick={() => void satisfyReplacementPayment()} type="button" variant="outline">
+                  {busy === "replacement-payment" ? "Satisfying payment…" : "Satisfy fake/local payment"}
+                </Button>
+              ) : (
+                <p className="text-sm text-muted-foreground">No payment required for this replacement.</p>
+              )}
+              <Button data-testid="booking-reschedule-confirm" disabled={!live || busy !== null || paymentRequired} onClick={() => void confirmReplacement()} type="button">
+                {busy === "replacement-confirm" ? "Confirming replacement…" : "Confirm replacement"}
+              </Button>
+            </div>
+            {paymentRequired ? <p className="text-sm text-muted-foreground">Payment-required state stays honest here. No real checkout provider is connected.</p> : null}
+          </section>
+        ) : null}
+
+        {showResult ? (
+          <section className="space-y-4" data-testid="booking-reschedule-result">
+            <Alert>
+              <AlertTitle>Replacement confirmed</AlertTitle>
+              <AlertDescription>The original booking is now rescheduled, and the replacement booking is confirmed.</AlertDescription>
+            </Alert>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border p-4">
+                <div className="scheduling-section-head">
+                  <div>
+                    <h4 className="font-semibold">Original booking</h4>
+                    <p className="text-sm text-muted-foreground">{formatDateTimeRange(oldBookingAfterReschedule?.range)}</p>
+                  </div>
+                  <StatusChip tone="info" label="Rescheduled" />
+                </div>
+                {oldBookingAfterReschedule ? renderRescheduleRelationBlock(oldBookingAfterReschedule) : null}
+              </div>
+              <div className="rounded-lg border p-4">
+                <div className="scheduling-section-head">
+                  <div>
+                    <h4 className="font-semibold">Replacement booking</h4>
+                    <p className="text-sm text-muted-foreground">{formatDateTimeRange(replacementBooking?.range)}</p>
+                  </div>
+                  <StatusChip tone="confirmed" label="Confirmed" />
+                </div>
+                {replacementBooking ? renderRescheduleRelationBlock(replacementBooking) : null}
+              </div>
+            </div>
+            {replacementBooking && props.providerSlug ? (
+              <div className="flex flex-wrap gap-3">
+                <Button asChild type="button" variant="outline">
+                  <a href={linkWithCurrentQuery(`/book/${props.providerSlug}/confirmed/${replacementBooking.id.value}`)}>Open replacement booking</a>
+                </Button>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        {errorMessage ? (
+          <Alert variant="destructive">
+            <AlertTitle>Reschedule could not continue</AlertTitle>
+            <AlertDescription>{controlledSchedulingError(errorMessage)}</AlertDescription>
+          </Alert>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ConfirmationSurfaceView({ scenario }: { scenario: SchedulingFixtureScenario }) {
   const booking = scenario.booking;
   const serviceName =
@@ -2480,6 +2938,14 @@ function ConfirmationSurfaceView({ scenario }: { scenario: SchedulingFixtureScen
         auditEvents={scenario.auditEvents}
         booking={booking}
         lifecycle={scenario.lifecycle}
+        reschedulePanel={
+          <BookingReschedulePanel
+            booking={scenario.rescheduleState?.oldBooking ?? booking}
+            fixtureState={scenario.rescheduleState}
+            providerSlug={scenario.providerSlug}
+            serviceName={serviceName}
+          />
+        }
         resourceName="Ada Demo Practice"
         serviceName={serviceName}
       />
@@ -3177,6 +3643,15 @@ function LiveConfirmationView() {
           </Button>
         }
         booking={booking}
+        reschedulePanel={
+          <BookingReschedulePanel
+            actor="local-dev-admin"
+            booking={booking}
+            onOriginalBookingUpdated={setBooking}
+            providerSlug={loadLiveContext().providerSlug ?? providerSlugFromPath()}
+            serviceName="30 minute consult"
+          />
+        }
         resourceName="M24 Smoke Resource"
         serviceName="30 minute consult"
       />
@@ -3328,6 +3803,21 @@ function LiveProviderBookingsView() {
         </div>
       </section>
 
+      {selectedBooking ? (
+        <BookingReschedulePanel
+          actor="local-dev-admin"
+          booking={selectedBooking}
+          onOriginalBookingUpdated={(updatedBooking) => {
+            setSelectedBooking(updatedBooking);
+            setBookings((current) => current.map((entry) => (entry.id.value === updatedBooking.id.value ? updatedBooking : entry)));
+          }}
+          onReplacementConfirmed={(nextBooking) => {
+            if (providerId) void refreshBookings(providerId, nextBooking.id.value);
+          }}
+          providerSlug={liveContext.providerSlug}
+        />
+      ) : null}
+
       {selectedBooking ? <BookingDebugPanel booking={selectedBooking} auditEvents={auditEvents} lifecycle={lifecycle} /> : null}
 
       {selectedBooking ? (
@@ -3413,12 +3903,19 @@ function formatTimestamp(value?: string | null, timeZone = "UTC") {
 }
 
 function bookingPrimaryStatusHeading(booking: Booking) {
-  return booking.status === "cancelled" ? "Booking cancelled" : "Booking confirmed";
+  return booking.status === "cancelled"
+    ? "Booking cancelled"
+    : booking.status === "rescheduled"
+      ? "Booking rescheduled"
+      : "Booking confirmed";
 }
 
 function bookingPrimaryStatusBody(booking: Booking) {
   if (booking.status === "cancelled") {
     return "This booking is no longer active. Confirmed-only actions have been disabled.";
+  }
+  if (booking.status === "rescheduled") {
+    return "This original booking was safely replaced after the new time was confirmed.";
   }
   return "Your time is reserved. The details below are the source of truth for what happens next.";
 }
@@ -3429,6 +3926,16 @@ function nextStepLinesForBooking(booking: Booking) {
       "The provider bookings screen reflects this cancellation.",
       "Any notification status shown here is policy-only unless a real provider is connected.",
       "Book another time if you still need the meeting.",
+    ];
+  }
+
+  if (booking.status === "rescheduled") {
+    return [
+      booking.rescheduledToBookingId
+        ? `This original booking now points to replacement booking ${booking.rescheduledToBookingId}.`
+        : "This original booking has been safely replaced by a new confirmed booking.",
+      "The old time no longer blocks its slot after the replacement is confirmed.",
+      "Open the provider bookings surface if you need audit or lifecycle detail.",
     ];
   }
 
@@ -3450,6 +3957,59 @@ function bookingActionLabels(booking: Booking) {
     allowIcs: booking.status === "confirmed",
     allowBookAnother: true,
   };
+}
+
+function isBookingReschedulable(booking: Booking) {
+  return booking.status === "confirmed";
+}
+
+function hasRescheduleRelation(booking: Booking) {
+  return Boolean(booking.rescheduledToBookingId || booking.rescheduledFromBookingId || booking.replacementHoldId);
+}
+
+function bookingRescheduleStateCopy(booking: Booking) {
+  if (booking.status === "rescheduled") {
+    return booking.rescheduledToBookingId
+      ? `This original booking was rescheduled to ${booking.rescheduledToBookingId}.`
+      : "This original booking was already rescheduled.";
+  }
+  if (booking.status === "cancelled") {
+    return "Cancelled bookings cannot start a replacement flow.";
+  }
+  return "Only confirmed bookings can start the safe replacement flow.";
+}
+
+function slotMatchesBooking(slot: BookableSlot, booking: Booking) {
+  return (
+    slot.resourceId === booking.resourceId?.value &&
+    slot.startsAtUtc === booking.range?.startsAtUtc &&
+    slot.endsAtUtc === booking.range?.endsAtUtc
+  );
+}
+
+function formatSlotSummary(slot?: BookableSlot) {
+  if (!slot) return "No target slot selected";
+  return `${slot.displayStartsAtLocal} to ${slot.displayEndsAtLocal}`;
+}
+
+function lifecycleStateLabel(summary?: SchedulingLifecycleSummary | null) {
+  return summary?.currentWorkflowState ?? summary?.workflowState ?? "unknown";
+}
+
+function hasLifecycleCheckpoint(summary?: SchedulingLifecycleSummary | null) {
+  return summary?.hasCheckpoint ?? summary?.checkpointExists ?? false;
+}
+
+function renderRescheduleRelationBlock(booking: Booking) {
+  if (!hasRescheduleRelation(booking)) return null;
+
+  return (
+    <div className="mt-3 text-sm text-muted-foreground">
+      {booking.rescheduledToBookingId ? <p>Rescheduled to {booking.rescheduledToBookingId}.</p> : null}
+      {booking.rescheduledFromBookingId ? <p>Rescheduled from {booking.rescheduledFromBookingId}.</p> : null}
+      {booking.replacementHoldId ? <p>Replacement hold {booking.replacementHoldId} linked this safe replacement flow.</p> : null}
+    </div>
+  );
 }
 
 function slotKey(slot: BookableSlot) {

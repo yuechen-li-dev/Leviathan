@@ -19,8 +19,12 @@ const repoRoot = path.resolve(webRoot, "..", "..");
 const serverProject = path.join(repoRoot, "src", "Leviathan.Server", "Leviathan.Server.csproj");
 
 export async function startRealBackend(): Promise<RealBackendHandle> {
-  const dataDir = path.join(webRoot, "test-results", "real-backend-data");
-  await rm(dataDir, { recursive: true, force: true });
+  const dataDir = path.join(
+    webRoot,
+    "test-results",
+    "real-backend-data",
+    `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  );
   await mkdir(dataDir, { recursive: true });
 
   const logs: string[] = [];

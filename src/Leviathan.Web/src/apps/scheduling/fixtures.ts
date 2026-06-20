@@ -6,6 +6,7 @@ import type {
   BookingAuditEvent,
   LocalDevPlatformContext,
   Provider,
+  ReplacementHoldResponse,
   SchedulingLifecycleSummary,
   SchedulingService,
 } from "./types";
@@ -17,7 +18,11 @@ export type SchedulingFixtureKey =
   | "booking-confirmation"
   | "cancelled-rescheduled"
   | "payment-required"
-  | "notification-summary";
+  | "notification-summary"
+  | "reschedule-available"
+  | "reschedule-picker"
+  | "reschedule-result"
+  | "rescheduled-booking-detail";
 
 export type SchedulingSurface = "landing" | "setup" | "booking" | "confirmation" | "bookings";
 
@@ -46,6 +51,16 @@ export type SchedulingFixtureScenario = {
   selectedBooking?: Booking;
   auditEvents?: BookingAuditEvent[];
   lifecycle?: SchedulingLifecycleSummary;
+  rescheduleState?: {
+    stage: "available" | "picker" | "replacement" | "result";
+    slots?: BookableSlot[];
+    selectedSlot?: BookableSlot;
+    replacementHold?: ReplacementHoldResponse | null;
+    replacementBooking?: Booking | null;
+    oldBooking?: Booking | null;
+    lifecycle?: SchedulingLifecycleSummary | null;
+    errorMessage?: string;
+  };
 };
 
 const localDevContext: LocalDevPlatformContext = {
@@ -487,18 +502,21 @@ const rescheduleAuditEvents: BookingAuditEvent[] = [
 
 const lifecycle: SchedulingLifecycleSummary = {
   workflowState: "confirmed",
+  currentWorkflowState: "Confirmed",
   status: "confirmed",
   createdAt: "2025-05-16T16:57:00Z",
   confirmedAt: "2025-05-16T17:01:00Z",
   lastDecisionCode: "payment_satisfied_fake",
   lastAuditEventId: "evt_notification",
   checkpointExists: true,
+  hasCheckpoint: true,
   paymentStatus: "payment_satisfied_fake",
   notificationSummary: confirmedBooking.notificationSummary,
 };
 
 const cancelledLifecycle: SchedulingLifecycleSummary = {
   workflowState: "cancelled",
+  currentWorkflowState: "Cancelled",
   status: "cancelled",
   createdAt: "2025-05-16T16:57:00Z",
   confirmedAt: "2025-05-16T17:01:00Z",
@@ -506,18 +524,78 @@ const cancelledLifecycle: SchedulingLifecycleSummary = {
   lastDecisionCode: "accepted_confirmed_booking",
   lastAuditEventId: "evt_notification_cancelled",
   checkpointExists: true,
+  hasCheckpoint: true,
   notificationSummary: cancelledBooking.notificationSummary,
 };
 
 const rescheduledLifecycle: SchedulingLifecycleSummary = {
   workflowState: "rescheduled",
+  currentWorkflowState: "Rescheduled",
   status: "rescheduled",
   createdAt: "2025-05-16T16:57:00Z",
   confirmedAt: "2025-05-16T17:01:00Z",
   lastDecisionCode: "replacement_confirmed",
   lastAuditEventId: "evt_rescheduled",
   checkpointExists: true,
+  hasCheckpoint: true,
+  rescheduledToBookingId: rescheduledBooking.rescheduledToBookingId,
+  replacementHoldId: "hold_demo_replacement",
   notificationSummary: rescheduledBooking.notificationSummary,
+};
+
+const replacementLifecycle: SchedulingLifecycleSummary = {
+  workflowState: "confirmed",
+  currentWorkflowState: "Confirmed",
+  status: "confirmed",
+  createdAt: "2025-05-20T15:03:00Z",
+  updatedAt: "2025-05-20T15:04:00Z",
+  confirmedAt: "2025-05-20T15:04:00Z",
+  lastDecisionCode: "accepted",
+  lastAuditEventId: "evt_reschedule_confirmed",
+  checkpointExists: true,
+  hasCheckpoint: true,
+  rescheduledFromBookingId: rescheduledBooking.id.value,
+  replacementHoldId: "hold_demo_replacement",
+  paymentStatus: "payment_satisfied_fake",
+  notificationSummary: replacementBooking.notificationSummary,
+};
+
+const replacementSlot = {
+  providerId: "prov_demo",
+  serviceId: "svc_intro_30",
+  resourceId: "res_emma",
+  startsAtUtc: "2025-05-20T18:00:00Z",
+  endsAtUtc: "2025-05-20T18:30:00Z",
+  timeZoneId: "America/Los_Angeles",
+  displayLabel: "Tue May 20, 11:00 AM",
+  providerTimeZoneId: "America/Los_Angeles",
+  displayTimeZoneId: "America/Los_Angeles",
+  displayStartsAtLocal: "Tue May 20, 11:00 AM PDT",
+  displayEndsAtLocal: "Tue May 20, 11:30 AM PDT",
+} satisfies BookableSlot;
+
+const replacementHold: ReplacementHoldResponse = {
+  oldBookingId: confirmedBooking.id.value,
+  replacementHoldId: "hold_demo_replacement",
+  claimToken: "claim_demo_replacement",
+  targetSlot: replacementSlot,
+  auditEventId: "evt_reschedule_hold_created",
+  lifecycle: {
+    workflowState: "awaiting_intake",
+    currentWorkflowState: "AwaitingIntake",
+    status: "active",
+    providerId: "prov_demo",
+    resourceId: "res_emma",
+    serviceId: "svc_intro_30",
+    holdId: "hold_demo_replacement",
+    createdAt: "2025-05-20T15:00:00Z",
+    updatedAt: "2025-05-20T15:00:00Z",
+    expiresAt: "2025-05-20T15:10:00Z",
+    lastAuditEventId: "evt_reschedule_hold_created",
+    checkpointExists: true,
+    hasCheckpoint: true,
+    paymentRequirementStatus: "not_required",
+  },
 };
 
 const sharedActions = [
@@ -635,6 +713,64 @@ const scenarios: Record<SchedulingFixtureKey, SchedulingFixtureScenario> = {
     auditEvents,
     lifecycle,
   },
+  "reschedule-available": {
+    ...baseScenario(
+      "reschedule-available",
+      "confirmation",
+      "Booking confirmed",
+      "Confirmed booking with the visible reschedule affordance and safe replacement wording.",
+      "/book/demo-provider/confirmed/book_demo_confirmed",
+    ),
+    booking: confirmedBooking,
+    services,
+    auditEvents,
+    lifecycle,
+    rescheduleState: {
+      stage: "available",
+      oldBooking: confirmedBooking,
+      slots: slots.filter((slot) => slot.serviceId === "svc_intro_30"),
+    },
+  },
+  "reschedule-picker": {
+    ...baseScenario(
+      "reschedule-picker",
+      "confirmation",
+      "Booking confirmed",
+      "Replacement picker open with current versus replacement time comparison.",
+      "/book/demo-provider/confirmed/book_demo_confirmed",
+    ),
+    booking: confirmedBooking,
+    services,
+    auditEvents,
+    lifecycle,
+    rescheduleState: {
+      stage: "picker",
+      oldBooking: confirmedBooking,
+      slots: slots.filter((slot) => slot.serviceId === "svc_intro_30"),
+      selectedSlot: replacementSlot,
+    },
+  },
+  "reschedule-result": {
+    ...baseScenario(
+      "reschedule-result",
+      "confirmation",
+      "Booking rescheduled",
+      "Replacement confirmed, with visible old/new relation and safe replacement outcome.",
+      `/book/demo-provider/confirmed/${rescheduledBooking.id.value}`,
+    ),
+    booking: rescheduledBooking,
+    services,
+    auditEvents: rescheduleAuditEvents,
+    lifecycle: rescheduledLifecycle,
+    rescheduleState: {
+      stage: "result",
+      oldBooking: rescheduledBooking,
+      selectedSlot: replacementSlot,
+      replacementHold,
+      replacementBooking,
+      lifecycle: replacementLifecycle,
+    },
+  },
   "cancelled-rescheduled": {
     ...baseScenario(
       "cancelled-rescheduled",
@@ -648,6 +784,28 @@ const scenarios: Record<SchedulingFixtureKey, SchedulingFixtureScenario> = {
     selectedBooking: cancelledBooking,
     auditEvents: cancelledAuditEvents,
     lifecycle: cancelledLifecycle,
+  },
+  "rescheduled-booking-detail": {
+    ...baseScenario(
+      "rescheduled-booking-detail",
+      "bookings",
+      "Provider bookings",
+      "Provider detail focused on an old rescheduled booking and its linked replacement.",
+      "/apps/scheduling/bookings",
+    ),
+    localDevContext,
+    bookings: [rescheduledBooking, replacementBooking, confirmedBooking],
+    selectedBooking: rescheduledBooking,
+    auditEvents: rescheduleAuditEvents,
+    lifecycle: rescheduledLifecycle,
+    rescheduleState: {
+      stage: "result",
+      oldBooking: rescheduledBooking,
+      selectedSlot: replacementSlot,
+      replacementHold,
+      replacementBooking,
+      lifecycle: replacementLifecycle,
+    },
   },
   "payment-required": {
     ...baseScenario(

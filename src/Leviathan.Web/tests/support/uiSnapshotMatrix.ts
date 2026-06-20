@@ -38,6 +38,10 @@ const taskTextOverrides: Record<string, string> = {
   "public-booking__phone": "Continue to confirmation",
   "booking-confirmation__tablet": "What happens next",
   "booking-confirmation__phone": "Actions",
+  "reschedule-available__desktop": "Your current booking stays confirmed until the new time is confirmed.",
+  "reschedule-picker__desktop": "Choose a replacement time",
+  "reschedule-result__desktop": "Replacement confirmed",
+  "rescheduled-booking-detail__desktop": "Replacement already confirmed",
 };
 
 export function createUiSnapshotCases(): UiSnapshotCase[] {

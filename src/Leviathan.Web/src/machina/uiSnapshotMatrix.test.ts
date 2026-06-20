@@ -20,7 +20,11 @@ describe("UI snapshot task matrix", () => {
       "booking-confirmation-desktop",
       "booking-confirmation-tablet",
       "booking-confirmation-phone",
+      "reschedule-available-desktop",
+      "reschedule-picker-desktop",
+      "reschedule-result-desktop",
       "cancelled-rescheduled-desktop",
+      "rescheduled-booking-detail-desktop",
       "payment-required-desktop",
       "notification-summary-desktop",
     ]);

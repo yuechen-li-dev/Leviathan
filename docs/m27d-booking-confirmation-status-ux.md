@@ -200,3 +200,11 @@ M27F follows this pass by tightening the provider-side setup and landing/admin f
 See:
 
 - `docs/m27f-provider-setup-ux-pass.md`
+
+## M27E follow-up note
+
+M27E follows M27D by adding a browser-visible reschedule affordance and replacement-flow coverage on top of the existing backend-safe reschedule semantics, while preserving the rule that reschedule is not cancel-then-book.
+
+See:
+
+- `docs/m27e-reschedule-browser-coverage-ux.md`
