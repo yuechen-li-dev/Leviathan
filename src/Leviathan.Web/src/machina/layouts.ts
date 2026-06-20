@@ -2,7 +2,6 @@ import {
   getArrangeContentRect,
   getRemainingStackRect,
   getStackContentRect,
-  getStackMainAxisMetrics,
   resolveLayoutRows,
   type LayoutRow,
   type Rect,
@@ -127,23 +126,15 @@ export function buildRustSimulatorLayout(
   const inspectorHeight = inspectorEnabled ? Math.min(320, Math.max(230, rootRect.height * 0.36)) : 0;
   const shellRows = buildRustShellRows(rootRect, navHeight, inspectorHeight, wide);
   const shellLayout = resolveLayoutRows(shellRows, rootRect);
-  const rootMetrics = getStackMainAxisMetrics(shellLayout, "root");
-  const contentRect = getRemainingStackRect(shellLayout, {
+  getRemainingStackRect(shellLayout, {
     parentId: "root",
     afterChildren: ["nav-bar"],
     beforeChildren: inspectorHeight > 0 ? ["debug-inspector"] : undefined,
   });
   const contentStackRect = getStackContentRect(shellLayout, "rust-content");
-  const contentAreaRect = getArrangeContentRect(contentRect, {
-    kind: "stack",
-    axis: wide ? "horizontal" : "vertical",
-    gap: rustContentGap,
-    padding: rustContentPadding,
-  });
-  const contentHeight = rootMetrics.childMetrics.find((child) => child.id === "rust-content")?.mainSize ?? contentRect.height;
-  const contentChromeHeight = contentRect.height - contentStackRect.height;
+  const sidePanelWidth = Math.max(288, contentStackRect.width);
   const narrowPanelHeight = Math.min(360, Math.max(300, Math.round(rootRect.height * 0.42)));
-  const sidePanelWidth = Math.max(288, contentAreaRect.width);
+
   return {
     rows: [
       shellRows[0],
@@ -160,7 +151,7 @@ export function buildRustSimulatorLayout(
         id: "side-panel",
         parent: "rust-content",
         frame: wide
-          ? { kind: "fixed", width: 360, height: Math.max(300, contentHeight - contentChromeHeight) }
+          ? { kind: "fixed", width: 360, height: Math.max(300, contentStackRect.height) }
           : { kind: "fixed", width: sidePanelWidth, height: narrowPanelHeight },
         arrange: { kind: "stack", axis: "vertical", gap: 12 },
         debugLabel: "Prompt and debug",
@@ -208,3 +199,9 @@ export function buildRustSimulatorLayout(
     },
   };
 }
+
+export const getShellRemainingHeight = (rootRect: Rect, fixedTopHeight: number): number =>
+  Math.max(
+    360,
+    getArrangeContentRect(rootRect, { kind: "stack", axis: "vertical" }).height - fixedTopHeight,
+  );

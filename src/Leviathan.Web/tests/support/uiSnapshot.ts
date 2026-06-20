@@ -1,21 +1,14 @@
 import { expect, type Page, type TestInfo } from "@playwright/test";
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { writeMachinaHandoffBundle } from "machinalayout/handoff";
+import type { MachinaScreenViewportTask } from "machinalayout";
+import { access, copyFile, mkdir, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-
-type MachinaDomNodeSummary = {
-  rootId: string | null;
-  nodeId: string | null;
-  slot: string | null;
-  view: string | null;
-  debugLabel: string | null;
-  layer: string | null;
-  tagName: string;
-  className: string;
-  role: string | null;
-  ariaLabel: string | null;
-  textExcerpt: string;
-  boundingBox: { x: number; y: number; width: number; height: number };
-};
+import {
+  toLeviathanDomSummaryCompat,
+  toLeviathanHandoffCompat,
+  type LeviathanDomSummaryCompat,
+  type LeviathanPageDomCapture,
+} from "../../src/machina/uiSnapshotCompat";
 
 type HandoffSnapshotResult = {
   route: string;
@@ -31,11 +24,14 @@ type HandoffSnapshotResult = {
     handoff: boolean;
   };
   domSummary: {
-    route: string;
-    generatedAt: string;
-    rootIds: string[];
-    visibleTextExcerpt: string;
-    nodes: MachinaDomNodeSummary[];
+    schemaVersion: LeviathanDomSummaryCompat["schemaVersion"];
+    rootSelector?: LeviathanDomSummaryCompat["rootSelector"];
+    route: LeviathanDomSummaryCompat["route"];
+    generatedAt: LeviathanDomSummaryCompat["generatedAt"];
+    rootIds: LeviathanDomSummaryCompat["rootIds"];
+    visibleTextExcerpt: LeviathanDomSummaryCompat["visibleTextExcerpt"];
+    nodes: LeviathanDomSummaryCompat["nodes"];
+    machina: LeviathanDomSummaryCompat["machina"];
   };
   machinaSnapshot: unknown;
 };
@@ -47,7 +43,7 @@ function safeSegment(value: string): string {
 export async function captureLeviathanUiHandoffBundle(
   page: Page,
   testInfo: TestInfo,
-  options: { name: string; route: string; artifactRoot?: string },
+  options: { name: string; route: string; artifactRoot?: string; task?: MachinaScreenViewportTask; tags?: readonly string[]; metadata?: Record<string, unknown> },
 ): Promise<HandoffSnapshotResult> {
   await expect(page.locator("[data-machina-root-id]")).toBeVisible();
 
@@ -55,7 +51,8 @@ export async function captureLeviathanUiHandoffBundle(
   const outputDir = path.join(projectRoot, "test-results", options.artifactRoot ?? "ui-snapshots", safeSegment(options.name));
   await mkdir(outputDir, { recursive: true });
 
-  const domSummary = await page.evaluate(() => {
+  const generatedAt = new Date().toISOString();
+  const pageDomCapture = await page.evaluate(() => {
     const textExcerpt = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
     const rootIds = Array.from(document.querySelectorAll<HTMLElement>("[data-machina-root-id]"))
       .map((element) => element.dataset.machinaRootId ?? null)
@@ -85,12 +82,12 @@ export async function captureLeviathanUiHandoffBundle(
 
     return {
       route: window.location.pathname + window.location.search,
-      generatedAt: new Date().toISOString(),
       rootIds,
       visibleTextExcerpt: textExcerpt(document.body.innerText || document.body.textContent),
       nodes,
     };
   });
+  const domSummary = toLeviathanDomSummaryCompat(await page.content(), pageDomCapture as LeviathanPageDomCapture, generatedAt);
 
   const machinaSnapshot = await page.evaluate(() => {
     const getSnapshot = window.__LEVIATHAN_GET_DEBUG_SNAPSHOT__;
@@ -107,25 +104,53 @@ export async function captureLeviathanUiHandoffBundle(
   const machinaSnapshotPath = path.join(outputDir, "machina-snapshot.json");
   const handoffPath = path.join(outputDir, "handoff.json");
 
-  await page.screenshot({ path: screenshotPath, fullPage: true });
-  await writeFile(domSummaryPath, JSON.stringify(domSummary, null, 2));
-  await writeFile(machinaSnapshotPath, JSON.stringify(machinaSnapshot, null, 2));
-
   const viewport = page.viewportSize() ?? { width: 0, height: 0 };
-  const handoff = {
-    testName: options.name,
-    route: options.route,
-    capturedRoute: domSummary.route,
-    generatedAt: new Date().toISOString(),
-    viewport,
-    screenshotPath: path.relative(projectRoot, screenshotPath).replace(/\\/g, "/"),
-    domSummaryPath: path.relative(projectRoot, domSummaryPath).replace(/\\/g, "/"),
-    machinaSnapshotPath: path.relative(projectRoot, machinaSnapshotPath).replace(/\\/g, "/"),
-    visibleTextExcerpt: domSummary.visibleTextExcerpt,
-    machinaNodeCount: domSummary.nodes.length,
-  };
+  const fixture = fixtureFromRoute(options.route);
+  const tempDir = await mkdtemp(path.join(outputDir, ".machina-handoff-"));
+  const sourceScreenshotPath = path.join(tempDir, "source-screenshot.png");
 
-  await writeFile(handoffPath, JSON.stringify(handoff, null, 2));
+  try {
+    await page.screenshot({ path: sourceScreenshotPath, fullPage: true });
+
+    const handoffWriteResult = await writeMachinaHandoffBundle({
+      outputDir: tempDir,
+      artifactBaseName: options.task?.artifactBaseName ?? options.name,
+      screenshotPath: sourceScreenshotPath,
+      domSummary: domSummary.machina,
+      layoutSnapshot: machinaSnapshot,
+      task: options.task,
+      route: options.route,
+      fixture,
+      tags: options.tags,
+      metadata: options.metadata,
+      createdAt: generatedAt,
+    });
+
+    await copyFile(handoffWriteResult.paths.screenshot ?? sourceScreenshotPath, screenshotPath);
+    await writeFile(domSummaryPath, `${JSON.stringify(domSummary, null, 2)}\n`, "utf8");
+    await writeFile(machinaSnapshotPath, `${JSON.stringify(machinaSnapshot, null, 2)}\n`, "utf8");
+
+    const handoff = toLeviathanHandoffCompat({
+      name: options.name,
+      route: options.route,
+      capturedRoute: domSummary.route,
+      fixture,
+      viewport,
+      generatedAt,
+      visibleTextExcerpt: domSummary.visibleTextExcerpt,
+      machinaNodeCount: domSummary.nodes.length,
+      screenshotPath: relativeArtifactPath(projectRoot, screenshotPath),
+      domSummaryPath: relativeArtifactPath(projectRoot, domSummaryPath),
+      machinaSnapshotPath: relativeArtifactPath(projectRoot, machinaSnapshotPath),
+      upstream: handoffWriteResult.manifest,
+      metadata: options.metadata,
+    });
+
+    await writeFile(handoffPath, `${JSON.stringify(handoff, null, 2)}\n`, "utf8");
+  } finally {
+    await unlink(sourceScreenshotPath).catch(() => undefined);
+    await rm(tempDir, { recursive: true, force: true });
+  }
 
   const artifactExists = {
     screenshot: await fileExists(screenshotPath),
@@ -145,6 +170,20 @@ export async function captureLeviathanUiHandoffBundle(
     domSummary,
     machinaSnapshot,
   };
+}
+
+function relativeArtifactPath(projectRoot: string, pathLike: string) {
+  return path.relative(projectRoot, pathLike).replace(/\\/g, "/");
+}
+
+function fixtureFromRoute(route: string) {
+  try {
+    const parsed = new URL(route, "http://leviathan.local");
+    const fixture = parsed.searchParams.get("fixture");
+    return fixture && fixture.trim() !== "" ? fixture : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function fileExists(pathLike: string) {

@@ -21,6 +21,7 @@ test.describe("Leviathan UI snapshot workbench", () => {
       const bundle = await captureLeviathanUiHandoffBundle(page, testInfo, {
         name: snapshotCase.name,
         route: snapshotCase.route,
+        task: snapshotCase.task,
       });
 
       const nodeIds = bundle.domSummary.nodes.map((node) => node.nodeId);

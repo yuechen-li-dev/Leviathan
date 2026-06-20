@@ -382,3 +382,17 @@ M25 reached success:
 - Leviathan is now verified against published `machinalayout@0.3.0`;
 - the biggest M24.5 friction items are concretely mapped to upstream 0.3.0 helpers;
 - the next safe adoption steps are isolated without forcing a broad refactor.
+
+## M26B follow-up
+
+M26B adopted the higher-contract Machina 0.3 helpers identified in this plan:
+
+- custom DOM summary extraction now routes through `summarizeMachinaDom` with a Leviathan compatibility wrapper that preserves the existing flat node list and route/text/rect fields
+- handoff writing now routes through `writeMachinaHandoffBundle` with compatibility-mapped final artifact names and preserved legacy `handoff.json` fields
+- upstream task metadata now surfaces in `handoff.json` when a `MachinaScreenViewportTask` is available without changing the existing bundle folder names
+
+Still deferred beyond M26B:
+
+- broader screen catalog conventions outside the current snapshot workflow
+- any deliberate debug overlay migration such as `nonInteractiveOverlay`
+- shell-specific layout abstractions and route/query helpers that remain app-local

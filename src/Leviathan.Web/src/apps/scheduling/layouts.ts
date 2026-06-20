@@ -2,7 +2,6 @@ import {
   getArrangeContentRect,
   getRemainingStackRect,
   getStackContentRect,
-  getStackMainAxisMetrics,
   resolveLayoutRows,
   type LayoutRow,
   type Rect,
@@ -70,10 +69,9 @@ export const buildSchedulingLayout = (
 } => {
   const wide = rootRect.width >= 1080;
   const heroHeight = rootRect.width >= 720 ? 168 : 208;
-  const inspectorHeight = inspectorEnabled ? Math.min(320, Math.max(230, rootRect.height * 0.36)) : 0;
+  const inspectorHeight = getSchedulingInspectorHeight(rootRect, inspectorEnabled);
   const shellRows = buildSchedulingShellRows(rootRect, heroHeight, inspectorHeight, wide);
   const shellLayout = resolveLayoutRows(shellRows, rootRect);
-  const rootMetrics = getStackMainAxisMetrics(shellLayout, "root");
   const contentRect = getRemainingStackRect(shellLayout, {
     parentId: "root",
     afterChildren: ["scheduling-hero"],
@@ -86,11 +84,8 @@ export const buildSchedulingLayout = (
     gap: schedulingContentGap,
     padding: schedulingContentPadding,
   });
-  const contentHeight =
-    rootMetrics.childMetrics.find((child) => child.id === "scheduling-content")?.mainSize ?? contentRect.height;
-  const contentChromeHeight = contentRect.height - contentStackRect.height;
   const sidebarWidth = Math.min(420, Math.max(320, Math.round(rootRect.width * 0.31)));
-  const narrowSidebarHeight = Math.max(160, Math.min(280, Math.round(contentHeight * 0.38)));
+  const narrowSidebarHeight = Math.max(160, Math.min(280, Math.round(contentRect.height * 0.38)));
 
   return {
     rows: [
@@ -108,7 +103,7 @@ export const buildSchedulingLayout = (
         id: "scheduling-sidebar",
         parent: "scheduling-content",
         frame: wide
-          ? { kind: "fixed", width: sidebarWidth, height: Math.max(220, contentHeight - contentChromeHeight) }
+          ? { kind: "fixed", width: sidebarWidth, height: Math.max(220, contentStackRect.height) }
           : { kind: "fixed", width: Math.max(320, contentAreaRect.width), height: narrowSidebarHeight },
         view: "schedulingSidebar",
         debugLabel: wide ? "Scheduling demo sidebar" : "Scheduling demo footer rail",
@@ -132,3 +127,18 @@ export const buildSchedulingLayout = (
     },
   };
 };
+
+export const getSchedulingInspectorHeight = (rootRect: Rect, enabled: boolean): number =>
+  enabled ? Math.min(320, Math.max(230, rootRect.height * 0.36)) : 0;
+
+export const getSchedulingRemainingHeight = (
+  rootRect: Rect,
+  heroHeight: number,
+  inspectorHeight: number,
+): number =>
+  Math.max(
+    240,
+    getArrangeContentRect(rootRect, { kind: "stack", axis: "vertical" }).height -
+      heroHeight -
+      inspectorHeight,
+  );

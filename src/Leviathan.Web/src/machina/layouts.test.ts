@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInitialShellState } from "./shellState";
-import { buildRustSimulatorLayout } from "./layouts";
+import { buildRustSimulatorLayout, getShellRemainingHeight } from "./layouts";
 
 function fixedFrame(
   rows: ReturnType<typeof buildRustSimulatorLayout>["rows"],
@@ -18,6 +18,7 @@ describe("rust simulator layout geometry", () => {
     const { rows } = buildRustSimulatorLayout(rootRect, state, false);
     const sidePanel = fixedFrame(rows, "side-panel");
 
+    expect(getShellRemainingHeight(rootRect, 76)).toBe(948);
     expect(sidePanel).toMatchObject({
       kind: "fixed",
       width: 360,

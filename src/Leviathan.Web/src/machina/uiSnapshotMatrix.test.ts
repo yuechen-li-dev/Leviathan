@@ -40,6 +40,10 @@ describe("UI snapshot task matrix", () => {
       route: "/book/demo-provider?debug=1&fixture=public-booking",
       expectedText: "Controlled states",
       expectedMachinaRoute: "scheduling",
+      task: expect.objectContaining({
+        screenKey: "public-booking",
+        viewportKey: "phone",
+      }),
     });
   });
 });

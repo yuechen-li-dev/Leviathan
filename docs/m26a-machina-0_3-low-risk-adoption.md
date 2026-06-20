@@ -94,6 +94,10 @@ Deferred to M26B:
 
 M26A intentionally leaves `src/Leviathan.Web/tests/support/uiSnapshot.ts` functionally unchanged.
 
+Follow-up:
+
+- M26B completes the DOM summary and handoff adoption while preserving the existing Leviathan artifact contract. See `docs/m26b-machina-handoff-dom-adoption.md`.
+
 ## Tests run
 
 Frontend:

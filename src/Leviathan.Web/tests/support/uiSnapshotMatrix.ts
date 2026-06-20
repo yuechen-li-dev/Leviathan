@@ -3,6 +3,7 @@ import {
   defineMachinaScreens,
   defineMachinaViewports,
   expandScreenViewportTasks,
+  type MachinaScreenViewportTask,
 } from "machinalayout";
 
 export type UiSnapshotCase = {
@@ -15,6 +16,7 @@ export type UiSnapshotCase = {
   expectedMachinaRoute: "apps" | "scheduling";
   taskKey: string;
   artifactBaseName: string;
+  task: MachinaScreenViewportTask;
 };
 
 type SnapshotScreenMetadata = {
@@ -166,6 +168,7 @@ export function createUiSnapshotCases(): UiSnapshotCase[] {
       expectedMachinaRoute: metadata.expectedMachinaRoute,
       taskKey: task.key,
       artifactBaseName: task.artifactBaseName,
+      task,
     };
   });
 }
