@@ -138,7 +138,15 @@ describe("UI snapshot compatibility helpers", () => {
           layoutSnapshot: "public-booking__phone__machina-snapshot.json",
           manifest: "public-booking__phone__handoff.json",
         },
-        metadata: { taskKey: "public-booking__phone" },
+        metadata: {
+          screenTitle: "Public booking",
+          productArea: "scheduling",
+          captureSource: "fixture-or-live",
+          supportsLiveRoute: true,
+          legacyArtifactBaseName: "public-booking",
+          debugOverlayMode: "nonInteractiveOverlay",
+          taskKey: "public-booking__phone",
+        },
       },
     });
 
@@ -160,7 +168,15 @@ describe("UI snapshot compatibility helpers", () => {
       machinaSnapshotPath: "test-results/ui-snapshots/public-booking-phone/machina-snapshot.json",
       visibleTextExcerpt: "Pick a slot 30 minute consult",
       machinaNodeCount: 6,
-      metadata: { taskKey: "public-booking__phone" },
+      metadata: {
+        screenTitle: "Public booking",
+        productArea: "scheduling",
+        captureSource: "fixture-or-live",
+        supportsLiveRoute: true,
+        legacyArtifactBaseName: "public-booking",
+        debugOverlayMode: "nonInteractiveOverlay",
+        taskKey: "public-booking__phone",
+      },
     });
 
     expect(handoff.artifacts).toEqual({

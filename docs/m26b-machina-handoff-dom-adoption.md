@@ -292,3 +292,15 @@ Other viable next steps:
 
 - `M27`: Scheduling provider UX polish using standardized handoff artifacts
 - `M27 alternative`: mobile real-backend smoke plus reschedule browser coverage
+
+## M26C follow-up
+
+M26C continues the Machina 0.3 adoption path with:
+
+- a shared Machina screen catalog for Leviathan snapshot/debug metadata
+- a partial DeusMachina inspector-behavior adoption via a small adapter
+- snapshot/test-only `nonInteractiveOverlay` evaluation while preserving the existing docked inspector and debug snapshot bridge
+
+See:
+
+- `docs/m26c-machina-screen-catalog-deus-inspector.md`

@@ -1,10 +1,12 @@
+import type { MachinaScreenViewportTask } from "machinalayout";
 import {
-  createViewportMatrix,
-  defineMachinaScreens,
-  defineMachinaViewports,
-  expandScreenViewportTasks,
-  type MachinaScreenViewportTask,
-} from "machinalayout";
+  createLeviathanHandoffMetadata,
+  createLeviathanScreenTasks,
+  getLeviathanScreenMetadata,
+  leviathanScreenCatalog,
+  leviathanViewports,
+  routeWithDebugOverlay,
+} from "../../src/machina/screenCatalog";
 
 export type UiSnapshotCase = {
   name: string;
@@ -16,131 +18,13 @@ export type UiSnapshotCase = {
   expectedMachinaRoute: "apps" | "scheduling";
   taskKey: string;
   artifactBaseName: string;
+  tags: readonly string[];
+  metadata: Record<string, unknown>;
   task: MachinaScreenViewportTask;
 };
 
-type SnapshotScreenMetadata = {
-  expectedHeading: string;
-  expectedNodeIds: string[];
-  expectedText: string;
-  expectedMachinaRoute: "apps" | "scheduling";
-};
-
-const standardResponsiveViewports = createViewportMatrix("standard-responsive");
-const viewportTemplateByKey = Object.fromEntries(
-  standardResponsiveViewports.map((viewport) => [viewport.key, viewport] as const),
-);
-
-export const uiSnapshotViewports = defineMachinaViewports([
-  { ...viewportTemplateByKey.desktop, width: 1440, height: 1024 },
-  { ...viewportTemplateByKey.tablet, width: 768, height: 1024 },
-  { ...viewportTemplateByKey.phone, width: 390, height: 844 },
-]);
-
-export const uiSnapshotScreens = defineMachinaScreens([
-  {
-    key: "apps-route",
-    route: "/apps?debug=1",
-    viewports: ["desktop", "tablet", "phone"],
-    metadata: {
-      expectedHeading: "Available apps",
-      expectedNodeIds: ["apps-list", "debug-inspector"],
-      expectedText: "Scheduling",
-      expectedMachinaRoute: "apps",
-    } satisfies SnapshotScreenMetadata,
-  },
-  {
-    key: "scheduling-landing",
-    route: "/apps/scheduling?debug=1&fixture=landing",
-    fixture: "landing",
-    viewports: ["desktop", "tablet", "phone"],
-    tags: ["scheduling", "fixture"],
-    metadata: {
-      expectedHeading: "Scheduling landing",
-      expectedNodeIds: ["scheduling-hero", "scheduling-main", "scheduling-sidebar", "debug-inspector"],
-      expectedText: "Action cards",
-      expectedMachinaRoute: "scheduling",
-    } satisfies SnapshotScreenMetadata,
-  },
-  {
-    key: "provider-setup",
-    route: "/apps/scheduling/setup?debug=1&fixture=provider-setup",
-    fixture: "provider-setup",
-    viewports: ["desktop"],
-    tags: ["scheduling", "fixture"],
-    metadata: {
-      expectedHeading: "Provider setup",
-      expectedNodeIds: ["scheduling-hero", "scheduling-main", "scheduling-sidebar", "debug-inspector"],
-      expectedText: "Suggested defaults",
-      expectedMachinaRoute: "scheduling",
-    } satisfies SnapshotScreenMetadata,
-  },
-  {
-    key: "public-booking",
-    route: "/book/demo-provider?debug=1&fixture=public-booking",
-    fixture: "public-booking",
-    viewports: ["desktop", "tablet", "phone"],
-    tags: ["scheduling", "fixture"],
-    metadata: {
-      expectedHeading: "Pick a slot",
-      expectedNodeIds: ["scheduling-hero", "scheduling-main", "scheduling-sidebar", "debug-inspector"],
-      expectedText: "30 minute consult",
-      expectedMachinaRoute: "scheduling",
-    } satisfies SnapshotScreenMetadata,
-  },
-  {
-    key: "booking-confirmation",
-    route: "/book/demo-provider/confirmed/book_demo_confirmed?debug=1&fixture=booking-confirmation",
-    fixture: "booking-confirmation",
-    viewports: ["desktop"],
-    tags: ["scheduling", "fixture"],
-    metadata: {
-      expectedHeading: "Booking confirmed",
-      expectedNodeIds: ["scheduling-hero", "scheduling-main", "scheduling-sidebar", "debug-inspector"],
-      expectedText: "Download ICS",
-      expectedMachinaRoute: "scheduling",
-    } satisfies SnapshotScreenMetadata,
-  },
-  {
-    key: "cancelled-rescheduled",
-    route: "/apps/scheduling/bookings?debug=1&fixture=cancelled-rescheduled",
-    fixture: "cancelled-rescheduled",
-    viewports: ["desktop"],
-    tags: ["scheduling", "fixture"],
-    metadata: {
-      expectedHeading: "Provider bookings",
-      expectedNodeIds: ["scheduling-hero", "scheduling-main", "scheduling-sidebar", "debug-inspector"],
-      expectedText: "Rescheduled",
-      expectedMachinaRoute: "scheduling",
-    } satisfies SnapshotScreenMetadata,
-  },
-  {
-    key: "payment-required",
-    route: "/book/demo-provider?debug=1&fixture=payment-required",
-    fixture: "payment-required",
-    viewports: ["desktop"],
-    tags: ["scheduling", "fixture"],
-    metadata: {
-      expectedHeading: "Pick a slot",
-      expectedNodeIds: ["scheduling-hero", "scheduling-main", "scheduling-sidebar", "debug-inspector"],
-      expectedText: "Payment is required before confirmation",
-      expectedMachinaRoute: "scheduling",
-    } satisfies SnapshotScreenMetadata,
-  },
-  {
-    key: "notification-summary",
-    route: "/apps/scheduling/bookings?debug=1&fixture=notification-summary",
-    fixture: "notification-summary",
-    viewports: ["desktop"],
-    tags: ["scheduling", "fixture"],
-    metadata: {
-      expectedHeading: "Provider bookings",
-      expectedNodeIds: ["scheduling-hero", "scheduling-main", "scheduling-sidebar", "debug-inspector"],
-      expectedText: "Notifications",
-      expectedMachinaRoute: "scheduling",
-    } satisfies SnapshotScreenMetadata,
-  },
-]);
+export const uiSnapshotViewports = leviathanViewports;
+export const uiSnapshotScreens = leviathanScreenCatalog;
 
 const taskTextOverrides: Record<string, string> = {
   "apps-route__desktop": "Scheduling",
@@ -155,19 +39,24 @@ const taskTextOverrides: Record<string, string> = {
 };
 
 export function createUiSnapshotCases(): UiSnapshotCase[] {
-  return expandScreenViewportTasks(uiSnapshotScreens, uiSnapshotViewports).map((task) => {
-    const metadata = task.screen.metadata as SnapshotScreenMetadata;
+  return createLeviathanScreenTasks().map((task) => {
+    const metadata = getLeviathanScreenMetadata(task);
+    const overlayMode = metadata.debugOverlayByViewport?.[task.viewportKey as "desktop" | "tablet" | "phone"];
 
     return {
       name: `${task.screenKey}-${task.viewportKey}`,
-      route: task.route,
+      route: routeWithDebugOverlay(task.route, overlayMode),
       viewport: { width: task.viewport.width, height: task.viewport.height },
       expectedHeading: metadata.expectedHeading,
-      expectedNodeIds: [...metadata.expectedNodeIds],
+      expectedNodeIds: overlayMode
+        ? metadata.expectedNodeIds.filter((nodeId) => nodeId !== "debug-inspector")
+        : [...metadata.expectedNodeIds],
       expectedText: taskTextOverrides[task.key] ?? metadata.expectedText,
       expectedMachinaRoute: metadata.expectedMachinaRoute,
       taskKey: task.key,
       artifactBaseName: task.artifactBaseName,
+      tags: task.tags,
+      metadata: createLeviathanHandoffMetadata(task),
       task,
     };
   });

@@ -18,6 +18,7 @@ import {
   setDebugInspectorEnabled,
   summarizeShellState,
 } from "./debugInspector";
+import { resolveInspectorBehavior } from "./inspectorBehavior";
 import { resolveApiBaseUrl } from "./apiConfig";
 import { viewRegistry } from "./views";
 
@@ -80,12 +81,17 @@ export function MachinaHost() {
   }, [dispatch]);
 
   const schedulingScenario = state.route === "scheduling" ? resolveSchedulingFixtureScenario(window.location) : null;
+  const inspectorBehavior = resolveInspectorBehavior({
+    location: window.location,
+    debugEnabled,
+    inspectorOpen,
+  });
   const doc =
     state.route === "rust-simulator"
-      ? buildRustSimulatorLayout(rootRect, state, debugEnabled && inspectorOpen)
+      ? buildRustSimulatorLayout(rootRect, state, inspectorBehavior.showDockedPanel)
       : state.route === "scheduling" && schedulingScenario
-        ? buildSchedulingLayout(rootRect, schedulingScenario, debugEnabled && inspectorOpen)
-        : buildAppsLayout(rootRect, debugEnabled && inspectorOpen);
+        ? buildSchedulingLayout(rootRect, schedulingScenario, inspectorBehavior.showDockedPanel)
+        : buildAppsLayout(rootRect, inspectorBehavior.showDockedPanel);
   const layout = useMemo(() => resolveLayoutRows(doc.rows, rootRect), [doc.rows, rootRect]);
   const layoutNodes = useMemo(() => inspectLayout(layout), [layout]);
   const recentEvents = historyRef.current.snapshot();
@@ -139,17 +145,26 @@ export function MachinaHost() {
 
   return (
     <>
-      {debugEnabled && (
+      {debugEnabled && !inspectorBehavior.showOverlay && (
         <button className="inspector-toggle" onClick={() => setInspectorOpen((open) => !open)}>
           Inspector {inspectorOpen ? "−" : "+"}
         </button>
       )}
       <MachinaReactView
-      className="machina-shell"
-      layout={layout}
-      views={viewRegistry as any}
-      viewData={viewData}
-      nodeData={nodeData}
+        className="machina-shell"
+        layout={layout}
+        views={viewRegistry as any}
+        viewData={viewData}
+        nodeData={nodeData}
+        debugOverlay={
+          inspectorBehavior.showOverlay
+            ? {
+                mode: inspectorBehavior.mode,
+                labels: inspectorBehavior.showLabels,
+                borders: inspectorBehavior.showBorders,
+              }
+            : undefined
+        }
       />
     </>
   );

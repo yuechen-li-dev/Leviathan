@@ -32,18 +32,36 @@ describe("UI snapshot task matrix", () => {
   it("keeps task metadata mapped back to stable artifact names and routes", () => {
     const cases = createUiSnapshotCases();
     const publicBookingPhone = cases.find((entry) => entry.name === "public-booking-phone");
+    const appsRouteDesktop = cases.find((entry) => entry.name === "apps-route-desktop");
 
     expect(publicBookingPhone).toMatchObject({
       name: "public-booking-phone",
       taskKey: "public-booking__phone",
       artifactBaseName: "public-booking__phone",
-      route: "/book/demo-provider?debug=1&fixture=public-booking",
+      route: "/book/demo-provider?debug=1&fixture=public-booking&debugOverlay=nonInteractiveOverlay",
       expectedText: "Controlled states",
       expectedMachinaRoute: "scheduling",
+      tags: ["scheduling", "fixture", "mocked", "booking", "phone", "mobile"],
+      metadata: {
+        screenTitle: "Public booking",
+        productArea: "scheduling",
+        captureSource: "fixture-or-live",
+        supportsLiveRoute: true,
+        legacyArtifactBaseName: "public-booking",
+        debugOverlayMode: "nonInteractiveOverlay",
+        taskKey: "public-booking__phone",
+      },
       task: expect.objectContaining({
         screenKey: "public-booking",
         viewportKey: "phone",
       }),
+    });
+
+    expect(appsRouteDesktop).toMatchObject({
+      route: "/apps?debug=1&debugOverlay=nonInteractiveOverlay",
+      metadata: {
+        debugOverlayMode: "nonInteractiveOverlay",
+      },
     });
   });
 });

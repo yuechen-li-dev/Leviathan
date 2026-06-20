@@ -23,11 +23,15 @@ test.describe("Scheduling real backend smoke", () => {
   test("walks the live scheduling path and captures real-backend handoff bundles", async ({ page }, testInfo) => {
     test.setTimeout(120_000);
     const issues = monitorPage(page);
-    const routeQuery = `debug=1&apiBaseUrl=${encodeURIComponent(apiBaseUrl)}`;
+    const routeQuery = `debug=1&debugOverlay=nonInteractiveOverlay&apiBaseUrl=${encodeURIComponent(apiBaseUrl)}`;
 
     await page.goto(`/apps/scheduling/setup?${routeQuery}`);
-    await closeInspector(page);
     await expect(page.getByRole("heading", { name: "Provider setup" })).toBeVisible();
+    await expect(page.getByTestId("machina-debug-overlay")).toHaveAttribute(
+      "data-machina-debug-overlay-mode",
+      "nonInteractiveOverlay",
+    );
+    await expect(page.getByRole("button", { name: /Inspector/ })).toHaveCount(0);
 
     await page.getByTestId("setup-create-provider").click();
     await expect(page.getByText(/Provider: /)).toBeVisible({ timeout: 30_000 });
@@ -129,14 +133,6 @@ function monitorPage(page: Page) {
 
 function isExpectedPaymentRequiredResponse(entry: string) {
   return entry.includes("400") && entry.includes("/api/apps/scheduling/bookings/confirm");
-}
-
-async function closeInspector(page: Page) {
-  const toggle = page.getByRole("button", { name: /Inspector/ });
-  if (await toggle.isVisible()) {
-    const label = await toggle.textContent();
-    if (label?.includes("−")) await toggle.click();
-  }
 }
 
 async function clickAction(page: Page, testId: string) {

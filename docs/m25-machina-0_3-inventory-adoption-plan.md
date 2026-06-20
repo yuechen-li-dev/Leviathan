@@ -396,3 +396,15 @@ Still deferred beyond M26B:
 - broader screen catalog conventions outside the current snapshot workflow
 - any deliberate debug overlay migration such as `nonInteractiveOverlay`
 - shell-specific layout abstractions and route/query helpers that remain app-local
+
+## M26C follow-up
+
+M26C closes part of the remaining gap called out here:
+
+- the screen catalog is now first-class in Leviathan metadata rather than living only inside the snapshot matrix helper
+- `nonInteractiveOverlay` was evaluated and adopted for explicit snapshot/test routes
+- inspector mode selection now routes through a small Deus-aware adapter while the existing docked inspector remains intact
+
+See:
+
+- `docs/m26c-machina-screen-catalog-deus-inspector.md`

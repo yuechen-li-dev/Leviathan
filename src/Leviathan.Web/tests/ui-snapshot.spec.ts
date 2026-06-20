@@ -22,6 +22,8 @@ test.describe("Leviathan UI snapshot workbench", () => {
         name: snapshotCase.name,
         route: snapshotCase.route,
         task: snapshotCase.task,
+        tags: snapshotCase.tags,
+        metadata: snapshotCase.metadata,
       });
 
       const nodeIds = bundle.domSummary.nodes.map((node) => node.nodeId);
@@ -38,10 +40,33 @@ test.describe("Leviathan UI snapshot workbench", () => {
           route: snapshotCase.expectedMachinaRoute,
         },
       });
+      expect(bundle.handoff).toMatchObject({
+        testName: snapshotCase.name,
+        route: snapshotCase.route,
+        fixture: snapshotCase.task.fixture,
+        screenKey: snapshotCase.task.screenKey,
+        viewportKey: snapshotCase.task.viewportKey,
+        tags: [...snapshotCase.tags],
+        metadata: snapshotCase.metadata,
+      });
       expect(issues.pageErrors).toEqual([]);
       expect(issues.consoleErrors).toEqual([]);
     });
   }
+
+  test("nonInteractiveOverlay renders overlay labels without the docked inspector panel", async ({ page }) => {
+    const overlayCase = snapshotCases.find((entry) => entry.name === "public-booking-phone");
+    expect(overlayCase).toBeDefined();
+
+    await page.setViewportSize(overlayCase!.viewport);
+    await page.goto(overlayCase!.route);
+    await expect(page.getByTestId("machina-debug-overlay")).toHaveAttribute(
+      "data-machina-debug-overlay-mode",
+      "nonInteractiveOverlay",
+    );
+    await expect(page.getByTestId("machina-debug-overlay-node-scheduling-main")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Inspector/ })).toHaveCount(0);
+  });
 });
 
 function monitorPage(page: Page) {

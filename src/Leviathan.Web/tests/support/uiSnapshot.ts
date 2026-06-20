@@ -7,6 +7,7 @@ import {
   toLeviathanDomSummaryCompat,
   toLeviathanHandoffCompat,
   type LeviathanDomSummaryCompat,
+  type LeviathanHandoffCompat,
   type LeviathanPageDomCapture,
 } from "../../src/machina/uiSnapshotCompat";
 
@@ -23,6 +24,7 @@ type HandoffSnapshotResult = {
     machinaSnapshot: boolean;
     handoff: boolean;
   };
+  handoff: LeviathanHandoffCompat;
   domSummary: {
     schemaVersion: LeviathanDomSummaryCompat["schemaVersion"];
     rootSelector?: LeviathanDomSummaryCompat["rootSelector"];
@@ -108,6 +110,7 @@ export async function captureLeviathanUiHandoffBundle(
   const fixture = fixtureFromRoute(options.route);
   const tempDir = await mkdtemp(path.join(outputDir, ".machina-handoff-"));
   const sourceScreenshotPath = path.join(tempDir, "source-screenshot.png");
+  let handoff: LeviathanHandoffCompat | undefined;
 
   try {
     await page.screenshot({ path: sourceScreenshotPath, fullPage: true });
@@ -130,7 +133,7 @@ export async function captureLeviathanUiHandoffBundle(
     await writeFile(domSummaryPath, `${JSON.stringify(domSummary, null, 2)}\n`, "utf8");
     await writeFile(machinaSnapshotPath, `${JSON.stringify(machinaSnapshot, null, 2)}\n`, "utf8");
 
-    const handoff = toLeviathanHandoffCompat({
+    handoff = toLeviathanHandoffCompat({
       name: options.name,
       route: options.route,
       capturedRoute: domSummary.route,
@@ -167,6 +170,7 @@ export async function captureLeviathanUiHandoffBundle(
     machinaSnapshotPath,
     handoffPath,
     artifactExists,
+    handoff: handoff as LeviathanHandoffCompat,
     domSummary,
     machinaSnapshot,
   };
