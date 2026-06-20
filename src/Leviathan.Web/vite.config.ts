@@ -1,13 +1,18 @@
-import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import path from "node:path";
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
-    dedupe: ['react', 'react-dom'],
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+    dedupe: ["react", "react-dom"],
   },
   test: {
-    exclude: ["tests/**", "playwright.config.ts"],
+    exclude: ["tests/**", "playwright.config.ts", "node_modules/**", "dist/**"],
   },
   server: {
     proxy: {

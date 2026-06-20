@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { JSDOM } from "jsdom";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { cancelBooking, schedulingEndpoints } from "./api";
@@ -6,10 +7,12 @@ import { slotSelected } from "./dispatch";
 import { resolveSchedulingFixtureScenario } from "./fixtures";
 import {
   AdminModeBanner,
+  BookingCalendarRegionView,
   BookingDebugPanel,
   ConfirmationView,
   ProviderBookingsView,
   ProviderSetupView,
+  SchedulingBookingPageProvider,
   SchedulingHomeView,
   SlotPickerView,
   StatusChip,
@@ -180,5 +183,30 @@ describe("scheduling frontend module", () => {
   it("renders useful scheduling errors", () => {
     const html = renderToStaticMarkup(createElement(SlotPickerView as any, { errorMessage: "payment_required" }));
     expect(html).toContain("Payment is required before confirmation");
+  });
+
+  it("calendar wrapper marks selected, available, and unavailable fixture dates accessibly", () => {
+    const scenario = resolveSchedulingFixtureScenario({ pathname: "/book/demo-provider", search: "?fixture=public-booking" });
+    const workingSessionScenario = {
+      ...scenario,
+      services: scenario.services?.filter((service) => service.durationMinutes === 45),
+      slots: scenario.slots?.filter((slot) => slot.serviceId === "svc_intro_45"),
+    };
+    const html = renderToStaticMarkup(
+      <SchedulingBookingPageProvider scenario={workingSessionScenario}>
+        <BookingCalendarRegionView {...({} as any)} />
+      </SchedulingBookingPageProvider>,
+    );
+    const dom = new JSDOM(html);
+    const calendar = dom.window.document.querySelector("[data-slot='calendar']");
+    expect(calendar).not.toBeNull();
+
+    const day14 = Array.from(calendar!.querySelectorAll("button")).find((button) => button.textContent?.trim() === "14");
+    const day15 = Array.from(calendar!.querySelectorAll("button")).find((button) => button.textContent?.trim() === "15");
+    const day7 = Array.from(calendar!.querySelectorAll("button")).find((button) => button.textContent?.trim() === "7" && button.getAttribute("data-selected-single") === "true");
+
+    expect(day14?.hasAttribute("disabled")).toBe(true);
+    expect(day15?.hasAttribute("disabled")).toBe(false);
+    expect(day7).toBeDefined();
   });
 });

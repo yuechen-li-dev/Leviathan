@@ -103,6 +103,21 @@ describe("scheduling layout geometry", () => {
     expect(tabletRows.map((row) => row.id)).toContain("booking-root-horizontal");
   });
 
+  it("keeps the horizontal public booking layout valid at compact desktop heights", () => {
+    const rootRect = { x: 0, y: 0, width: 1280, height: 608 };
+    expect(() => resolveLayoutRows(buildSchedulingLayout(rootRect, bookingScenario, false).rows, rootRect)).not.toThrow();
+  });
+
+  it("keeps the horizontal public booking layout valid when the docked inspector is open", () => {
+    const rootRect = { x: 0, y: 0, width: 1280, height: 720 };
+    expect(() => resolveLayoutRows(buildSchedulingLayout(rootRect, bookingScenario, true).rows, rootRect)).not.toThrow();
+  });
+
+  it("keeps the tablet public booking layout valid when the docked inspector is open", () => {
+    const rootRect = { x: 0, y: 0, width: 768, height: 1024 };
+    expect(() => resolveLayoutRows(buildSchedulingLayout(rootRect, bookingScenario, true).rows, rootRect)).not.toThrow();
+  });
+
   it("builds the explicit vertical public booking layout for phone widths", () => {
     const rootRect = { x: 0, y: 0, width: 390, height: 844 };
     const { rows } = buildPublicBookingVerticalLayout(rootRect, bookingScenario, false);

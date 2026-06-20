@@ -14,6 +14,19 @@ import type {
   SchedulingService,
 } from "./types";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import { ModeToggle } from "@/components/mode-toggle";
+import {
   assignResourceToService,
   cancelBooking,
   confirmBooking,
@@ -201,10 +214,10 @@ type BookingPageContextValue = {
   busy: string | null;
   errorMessage?: string;
   customer: typeof defaultCustomer;
-  monthLabel: string;
-  monthCanGoPrevious: boolean;
-  monthCanGoNext: boolean;
-  calendarWeeks: CalendarCell[][];
+  availableDateKeys: string[];
+  calendarMonth?: Date;
+  calendarStartMonth?: Date;
+  calendarEndMonth?: Date;
   dayHeadline: string;
   slotGroups: SlotPresentation[];
   timezoneLabel: string;
@@ -216,21 +229,13 @@ type BookingPageContextValue = {
   trustNotes: string[];
   selectService: (serviceId: string) => void;
   selectDate: (dateKey: string) => void;
+  setCalendarMonth: (month: Date) => void;
   selectSlot: (slot: BookableSlot) => void;
   clearSelection: () => void;
   setCustomerField: (field: "name" | "email" | "phone" | "notes", value: string) => void;
   submitIntake: () => void;
   confirmBooking: () => void;
   satisfyPayment: () => void;
-};
-
-type CalendarCell = {
-  key: string;
-  dayNumber: number;
-  dateKey?: string;
-  available: boolean;
-  selected: boolean;
-  outsideMonth: boolean;
 };
 
 type SlotPresentation = {
@@ -368,7 +373,9 @@ export function SchedulingBookingPageProvider(props: {
     : selectedDate
       ? selectedDate.slice(0, 7)
       : months[0]?.monthKey;
-  const monthIndex = months.findIndex((entry) => entry.monthKey === resolvedMonthKey);
+  const calendarMonth = monthDateFromMonthKey(resolvedMonthKey);
+  const calendarStartMonth = monthDateFromMonthKey(months[0]?.monthKey);
+  const calendarEndMonth = monthDateFromMonthKey(months.at(-1)?.monthKey);
   const slotGroups = serviceSlots
     .filter((slot) => !selectedDate || dateKeyForSlot(slot) === selectedDate)
     .map((slot) => ({
@@ -378,8 +385,6 @@ export function SchedulingBookingPageProvider(props: {
       selected: selectedSlotKey === slotKey(slot),
     }));
   const selectedSlot = serviceSlots.find((slot) => slotKey(slot) === selectedSlotKey);
-  const calendarWeeks = buildCalendarWeeks(resolvedMonthKey, availableDates, selectedDate);
-  const monthLabel = monthLabelForKey(resolvedMonthKey);
   const dayHeadline = selectedSlot
     ? longDateLabelForSlot(selectedSlot)
     : selectedDate
@@ -487,10 +492,10 @@ export function SchedulingBookingPageProvider(props: {
     busy,
     errorMessage,
     customer,
-    monthLabel,
-    monthCanGoPrevious: monthIndex > 0,
-    monthCanGoNext: monthIndex >= 0 && monthIndex < months.length - 1,
-    calendarWeeks,
+    availableDateKeys: availableDates.map((entry) => entry.dateKey),
+    calendarMonth,
+    calendarStartMonth,
+    calendarEndMonth,
     dayHeadline,
     slotGroups,
     timezoneLabel,
@@ -518,6 +523,12 @@ export function SchedulingBookingPageProvider(props: {
       if (live) {
         setHold(null);
         setBooking(null);
+      }
+    },
+    setCalendarMonth: (month) => {
+      const monthKey = monthKeyForDate(month);
+      if (months.some((entry) => entry.monthKey === monthKey)) {
+        setActiveMonthKey(monthKey);
       }
     },
     selectSlot: (slot) => {
@@ -686,9 +697,7 @@ function BookingHeaderContent({ mobile = false }: { mobile?: boolean }) {
         <a className="scheduling-booking-header-button" href={linkWithCurrentQuery("/apps")}>
           Back to apps
         </a>
-        <button aria-label="Theme toggle placeholder" className="scheduling-booking-header-icon" disabled type="button">
-          ◐
-        </button>
+        <ModeToggle />
       </div>
     </header>
   );
@@ -709,7 +718,7 @@ function BookingProviderIdentity({
       <div>
         <h2>{page.providerName}</h2>
         <p>{page.providerRole}</p>
-        <span className="status-chip status-chip-confirmed">{page.providerAvailabilityLabel}</span>
+        <Badge className="mt-2" variant="secondary">{page.providerAvailabilityLabel}</Badge>
       </div>
     </div>
   );
@@ -784,16 +793,18 @@ function BookingDurationPicker({ page }: { page: BookingPageContextValue }) {
   return (
     <div className="scheduling-duration-picker" role="tablist" aria-label="Available durations">
       {page.services.map((service) => (
-        <button
+        <Button
           aria-selected={page.selectedServiceId === service.id.value}
-          className={page.selectedServiceId === service.id.value ? "is-selected" : ""}
+          className="min-w-16"
           key={service.id.value}
           onClick={() => page.selectService(service.id.value)}
           role="tab"
+          size="sm"
           type="button"
+          variant={page.selectedServiceId === service.id.value ? "default" : "outline"}
         >
           {service.durationMinutes}m
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -810,6 +821,10 @@ function BookingCalendarPanel({
   subtitle?: string;
   showDurationPicker?: boolean;
 }) {
+  const selectedDate = page.selectedDateKey ? dateFromDateKey(page.selectedDateKey) : undefined;
+  const availableDateSet = new Set(page.availableDateKeys);
+  const availableDates = page.availableDateKeys.map(dateFromDateKey);
+
   return (
     <>
       {title ? (
@@ -821,44 +836,38 @@ function BookingCalendarPanel({
           {showDurationPicker ? <BookingDurationPicker page={page} /> : null}
         </div>
       ) : null}
-      <div className="scheduling-booking-calendar-head">
-        <button disabled={!page.monthCanGoPrevious} type="button">
-          ‹
-        </button>
-        <h3>{page.monthLabel}</h3>
-        <button disabled={!page.monthCanGoNext} type="button">
-          ›
-        </button>
-      </div>
-      <div className="scheduling-booking-weekdays">
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
-          <span key={label}>{label}</span>
-        ))}
-      </div>
-      <div className="scheduling-booking-calendar-grid">
-        {page.calendarWeeks.flat().map((cell) =>
-          cell.dateKey ? (
-            <button
-              className={[
-                "scheduling-booking-day",
-                cell.available ? "is-available" : "",
-                cell.selected ? "is-selected" : "",
-                cell.outsideMonth ? "is-outside" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              disabled={!cell.available}
-              key={cell.key}
-              onClick={() => page.selectDate(cell.dateKey!)}
-              type="button"
-            >
-              <span>{cell.dayNumber}</span>
-            </button>
-          ) : (
-            <span className="scheduling-booking-day is-empty" key={cell.key} />
-          ),
-        )}
-      </div>
+      {availableDates.length ? (
+        <Calendar
+          className="scheduling-shadcn-calendar"
+          classNames={{
+            root: "w-full",
+            months: "w-full",
+            month: "w-full",
+            month_grid: "w-full",
+          }}
+          disabled={(date) => !availableDateSet.has(dateKeyForDate(date))}
+          fixedWeeks
+          mode="single"
+          modifiers={{ available: availableDates }}
+          modifiersClassNames={{
+            available: "bg-accent/70 text-foreground font-medium",
+          }}
+          month={page.calendarMonth}
+          onMonthChange={page.setCalendarMonth}
+          onSelect={(date) => {
+            if (date) page.selectDate(dateKeyForDate(date));
+          }}
+          selected={selectedDate}
+          showOutsideDays
+          startMonth={page.calendarStartMonth}
+          endMonth={page.calendarEndMonth}
+        />
+      ) : (
+        <Alert>
+          <AlertTitle>No available dates yet</AlertTitle>
+          <AlertDescription>Live slots will appear here when the selected service has availability.</AlertDescription>
+        </Alert>
+      )}
       <p className="scheduling-booking-timezone-note">Times shown in {page.timezoneLabel}</p>
     </>
   );
@@ -868,19 +877,42 @@ function BookingSlotButtonList({ page }: { page: BookingPageContextValue }) {
   return (
     <div className="scheduling-booking-slot-list">
       {page.slotGroups.map((entry) => (
-        <button
-          className={entry.selected ? "is-selected" : ""}
+        <Button
+          className="scheduling-slot-option"
           data-testid={entry.selected ? "public-selected-slot" : "public-slot-option"}
           key={slotKey(entry.slot)}
           onClick={() => page.selectSlot(entry.slot)}
           type="button"
+          variant={entry.selected ? "default" : "outline"}
         >
-          <strong>{entry.label}</strong>
-          <span>{entry.sublabel}</span>
+          <span className="scheduling-slot-option-time">{entry.label}</span>
+          <span className="scheduling-slot-option-label">{entry.sublabel}</span>
           {entry.selected ? <span aria-hidden="true">✓</span> : null}
-        </button>
+        </Button>
       ))}
       {!page.slotGroups.length ? <p>No available times for this day yet.</p> : null}
+    </div>
+  );
+}
+
+function BookingIntakeField({
+  label,
+  htmlFor,
+  optional,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  optional?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="scheduling-booking-field">
+      <Label htmlFor={htmlFor}>
+        {label}
+        {optional ? <span className="scheduling-inline-note">(optional)</span> : null}
+      </Label>
+      {children}
     </div>
   );
 }
@@ -906,68 +938,78 @@ function BookingIntakeForm({
   return (
     <article className="scheduling-booking-intake">
       {title ? <h3>{title}</h3> : null}
-      <label>
-        Your name
-        <input
+      <BookingIntakeField htmlFor="booking-intake-name" label="Your name">
+        <Input
           data-testid="public-intake-name"
+          id="booking-intake-name"
           onChange={(event) => page.setCustomerField("name", event.target.value)}
           placeholder="e.g., Alex Johnson"
           value={page.customer.name}
         />
-      </label>
-      <label>
-        Email
-        <input
+      </BookingIntakeField>
+      <BookingIntakeField htmlFor="booking-intake-email" label="Email">
+        <Input
           data-testid="public-intake-email"
+          id="booking-intake-email"
           onChange={(event) => page.setCustomerField("email", event.target.value)}
           placeholder="e.g., alex@example.com"
+          type="email"
           value={page.customer.email}
         />
-      </label>
-      <label>
-        Phone
-        <input onChange={(event) => page.setCustomerField("phone", event.target.value)} placeholder="Optional" value={page.customer.phone} />
-      </label>
-      <label>
-        Notes <span className="scheduling-inline-note">(optional)</span>
-        <textarea onChange={(event) => page.setCustomerField("notes", event.target.value)} placeholder="Anything we should know?" value={page.customer.notes} />
-      </label>
+      </BookingIntakeField>
+      <BookingIntakeField htmlFor="booking-intake-phone" label="Phone" optional>
+        <Input
+          id="booking-intake-phone"
+          onChange={(event) => page.setCustomerField("phone", event.target.value)}
+          placeholder="Optional"
+          value={page.customer.phone}
+        />
+      </BookingIntakeField>
+      <BookingIntakeField htmlFor="booking-intake-notes" label="Notes" optional>
+        <Textarea
+          id="booking-intake-notes"
+          onChange={(event) => page.setCustomerField("notes", event.target.value)}
+          placeholder="Anything we should know?"
+          value={page.customer.notes}
+        />
+      </BookingIntakeField>
 
       {page.hasPaymentAlert ? (
-        <p className="error" data-testid="public-payment-required" role="alert">
-          {page.paymentAlertText}
-        </p>
+        <Alert data-testid="public-payment-required" variant="destructive">
+          <AlertTitle>Payment required</AlertTitle>
+          <AlertDescription>{page.paymentAlertText}</AlertDescription>
+        </Alert>
       ) : null}
 
       <div className="scheduling-booking-intake-actions">
-        <button
+        <Button
           data-testid="public-submit-intake"
           disabled={page.live ? !page.hold || !!page.busy : true}
           onClick={() => page.submitIntake()}
           type="button"
         >
           {page.busy === "intake" ? "Saving details…" : "Save details"}
-        </button>
-        <button
+        </Button>
+        <Button
           data-testid="public-confirm-booking"
           disabled={page.live ? !page.hold || !!page.busy : true}
           onClick={() => page.confirmBooking()}
           type="button"
         >
           {page.busy === "confirm" ? "Continuing…" : "Continue to confirmation"}
-        </button>
+        </Button>
       </div>
 
       {page.live ? (
-        <button
-          className="scheduling-booking-ghost-button"
+        <Button
           data-testid="public-fake-satisfy-payment"
           disabled={!page.hold || !!page.busy}
           onClick={() => page.satisfyPayment()}
           type="button"
+          variant="secondary"
         >
           {page.busy === "payment" ? "Satisfying fake/local payment…" : "Satisfy fake/local payment"}
-        </button>
+        </Button>
       ) : null}
     </article>
   );
@@ -1008,9 +1050,9 @@ function BookingFooterSummaryCard({
           <dd>{page.hold?.paymentReference ?? "none"}</dd>
         </div>
       </dl>
-      <button disabled={!page.selectedSlot} onClick={() => page.clearSelection()} type="button">
+      <Button disabled={!page.selectedSlot} onClick={() => page.clearSelection()} type="button" variant="outline">
         Cancel selection
-      </button>
+      </Button>
     </section>
   );
 }
@@ -1032,9 +1074,13 @@ export function BookingSummaryPanelView(props: SlotProps) {
   return (
     <section className="scheduling-booking-summary">
       <BookingProviderIdentity page={page} />
+      <Separator />
       <BookingServiceSummary page={page} />
+      <Separator />
       <BookingMetaRows page={page} />
+      <Separator />
       <BookingStepList page={page} />
+      <Separator />
       <aside className="scheduling-booking-callout" role="note">
         <h3>What to expect</h3>
         {page.whatToExpectLines.map((line) => (
@@ -1241,10 +1287,10 @@ export function SchedulingHomeView({ scenario }: { scenario: SchedulingFixtureSc
 
 export function AdminModeBanner({ errorMessage }: { errorMessage?: string }) {
   return (
-    <aside className="scheduling-admin-warning" role={errorMessage ? "alert" : "note"}>
-      <strong>{isUnsafeAdminError(errorMessage) ? "Admin gate blocked." : "Local/dev admin mode."}</strong>{" "}
-      {isUnsafeAdminError(errorMessage) ? adminGateMessage : localDevAdminWarning}
-    </aside>
+    <Alert className="scheduling-admin-warning" variant={isUnsafeAdminError(errorMessage) ? "destructive" : "default"}>
+      <AlertTitle>{isUnsafeAdminError(errorMessage) ? "Admin gate blocked." : "Local/dev admin mode."}</AlertTitle>
+      <AlertDescription>{isUnsafeAdminError(errorMessage) ? adminGateMessage : localDevAdminWarning}</AlertDescription>
+    </Alert>
   );
 }
 
@@ -2358,7 +2404,20 @@ function LiveProviderBookingsView() {
 }
 
 export function StatusChip({ tone, label }: { tone: "confirmed" | "warning" | "danger" | "info" | "neutral"; label: string }) {
-  return <span className={`status-chip status-chip-${tone}`}>{label}</span>;
+  const variant =
+    tone === "danger"
+      ? "destructive"
+      : tone === "neutral"
+        ? "outline"
+        : tone === "warning"
+          ? "secondary"
+          : "default";
+
+  return (
+    <Badge className={`status-chip status-chip-${tone}`} variant={variant}>
+      {label}
+    </Badge>
+  );
 }
 
 function slotKey(slot: BookableSlot) {
@@ -2412,60 +2471,30 @@ function buildMonthOptions(dates: Array<{ dateKey: string; year: number; month: 
   ).sort((left, right) => left.monthKey.localeCompare(right.monthKey));
 }
 
-function buildCalendarWeeks(
-  monthKey: string | undefined,
-  dates: Array<{ dateKey: string; year: number; month: number; day: number }>,
-  selectedDateKey?: string,
-): CalendarCell[][] {
-  if (!monthKey) return [];
-  const year = Number.parseInt(monthKey.slice(0, 4), 10);
-  const month = Number.parseInt(monthKey.slice(5, 7), 10);
-  const firstDay = new Date(Date.UTC(year, month - 1, 1));
-  const firstWeekday = firstDay.getUTCDay();
-  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const availableSet = new Set(dates.map((entry) => entry.dateKey));
-  const cells: CalendarCell[] = [];
-
-  for (let index = 0; index < firstWeekday; index += 1) {
-    cells.push({ key: `empty-start-${index}`, dayNumber: 0, available: false, selected: false, outsideMonth: true });
-  }
-
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const dateKey = `${monthKey}-${String(day).padStart(2, "0")}`;
-    cells.push({
-      key: dateKey,
-      dayNumber: day,
-      dateKey,
-      available: availableSet.has(dateKey),
-      selected: selectedDateKey === dateKey,
-      outsideMonth: false,
-    });
-  }
-
-  while (cells.length % 7 !== 0) {
-    cells.push({
-      key: `empty-end-${cells.length}`,
-      dayNumber: 0,
-      available: false,
-      selected: false,
-      outsideMonth: true,
-    });
-  }
-
-  const weeks: CalendarCell[][] = [];
-  for (let index = 0; index < cells.length; index += 7) {
-    weeks.push(cells.slice(index, index + 7));
-  }
-  return weeks;
+function dateFromDateKey(dateKey: string) {
+  const year = Number.parseInt(dateKey.slice(0, 4), 10);
+  const month = Number.parseInt(dateKey.slice(5, 7), 10);
+  const day = Number.parseInt(dateKey.slice(8, 10), 10);
+  return new Date(Date.UTC(year, month - 1, day, 12));
 }
 
-function monthLabelForKey(monthKey?: string) {
-  if (!monthKey) return "Choose a month";
+function dateKeyForDate(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function monthDateFromMonthKey(monthKey?: string) {
+  if (!monthKey) return undefined;
   const year = Number.parseInt(monthKey.slice(0, 4), 10);
   const month = Number.parseInt(monthKey.slice(5, 7), 10);
-  return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(
-    new Date(Date.UTC(year, month - 1, 1)),
-  );
+  return new Date(Date.UTC(year, month - 1, 1, 12));
+}
+
+function monthKeyForDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function timeLabelForSlot(slot: BookableSlot) {

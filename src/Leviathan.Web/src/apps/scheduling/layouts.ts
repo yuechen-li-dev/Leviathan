@@ -172,6 +172,7 @@ export function buildPublicBookingHorizontalLayout(
   viewData: Record<string, { scenario: SchedulingFixtureScenario }>;
 } {
   const desktop = rootRect.width >= 1180;
+  const stackedBody = rootRect.width < 960;
   const headerHeight = rootRect.width >= 720 ? 82 : 74;
   const inspectorHeight = getSchedulingInspectorHeight(rootRect, inspectorEnabled);
   const bookingRootPadding = rootRect.width < 1080 ? 16 : 20;
@@ -229,15 +230,17 @@ export function buildPublicBookingHorizontalLayout(
   });
   const summaryWidth = Math.min(372, Math.max(280, Math.round(bookingRootContentRect.width * 0.28)));
   const mainWidth = Math.max(340, bookingRootContentRect.width - summaryWidth - bookingRootGap - 12);
-  const summaryHeight = Math.max(420, bookingRootContentRect.height - 1);
-  const mainHeight = Math.max(420, bookingRootContentRect.height - 1);
-  const mainHeaderHeight = rootRect.width < 900 ? 96 : 104;
-  const footerHeight = rootRect.width < 900 ? 116 : 108;
-  const bodyHeight = Math.max(320, mainHeight - mainHeaderHeight - footerHeight);
+  const summaryHeight = Math.max(320, bookingRootContentRect.height - 1);
+  const mainHeight = Math.max(320, bookingRootContentRect.height - 1);
+  const compactHeight = bookingRootContentRect.height < 420;
+  const mainHeaderHeight = compactHeight ? 84 : rootRect.width < 900 ? 96 : 104;
+  const footerHeight = compactHeight ? 92 : rootRect.width < 900 ? 116 : 108;
+  const bodyHeight = Math.max(160, mainHeight - mainHeaderHeight - footerHeight);
   const mainInnerWidth = Math.max(320, mainWidth - 12);
   const calendarWidth = Math.max(320, Math.round(mainInnerWidth * (desktop ? 0.54 : 0.5)));
   const slotsWidth = Math.min(440, Math.max(320, mainInnerWidth - calendarWidth - 16));
-  const slotsHeight = bodyHeight;
+  const calendarHeight = stackedBody ? Math.max(180, Math.round(bodyHeight * 0.54)) : bodyHeight;
+  const slotsHeight = stackedBody ? Math.max(120, bodyHeight - calendarHeight - 16) : bodyHeight;
 
   return {
     rows: [
@@ -267,20 +270,24 @@ export function buildPublicBookingHorizontalLayout(
         id: "booking-main-body",
         parent: "booking-main-panel",
         frame: { kind: "fixed", width: mainInnerWidth, height: bodyHeight },
-        arrange: { kind: "stack", axis: "horizontal", gap: 16 },
+        arrange: { kind: "stack", axis: stackedBody ? "vertical" : "horizontal", gap: 16 },
         debugLabel: "Public booking calendar and slots body",
       },
       {
         id: "booking-calendar-region",
         parent: "booking-main-body",
-        frame: { kind: "fill", weight: 1, cross: "fill" },
+        frame: stackedBody
+          ? { kind: "fixed", width: mainInnerWidth, height: calendarHeight }
+          : { kind: "fill", weight: 1, cross: "fill" },
         view: "bookingCalendarRegion",
         debugLabel: "Public booking calendar region",
       },
       {
         id: "booking-slots-region",
         parent: "booking-main-body",
-        frame: { kind: "fixed", width: slotsWidth, height: slotsHeight },
+        frame: stackedBody
+          ? { kind: "fixed", width: mainInnerWidth, height: slotsHeight }
+          : { kind: "fixed", width: slotsWidth, height: slotsHeight },
         view: "bookingSlotsRegion",
         debugLabel: "Public booking slot and intake region",
       },

@@ -444,6 +444,18 @@ const sharedActions = [
     cta: "Open booking demo",
   },
   {
+    title: "Booking confirmation",
+    href: "/book/demo-provider/confirmed/book_demo_confirmed?debug=1&fixture=booking-confirmation",
+    body: "Confirmed booking status surface with lifecycle context, fake/local policy labels, and the follow-on provider bookings path.",
+    cta: "Open confirmation demo",
+  },
+  {
+    title: "Payment required",
+    href: "/book/demo-provider?debug=1&fixture=payment-required",
+    body: "Public booking state that shows the blocked-before-confirmation path without claiming a real provider integration.",
+    cta: "Open payment-required demo",
+  },
+  {
     title: "Provider bookings",
     href: "/apps/scheduling/bookings?debug=1&fixture=cancelled-rescheduled",
     body: "Readable lifecycle panels with cancellation, reschedule, and fake payment/notification status chips.",

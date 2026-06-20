@@ -212,3 +212,11 @@ Recommended next options:
 - mobile public booking polish pass
 - provider setup UX pass
 - reschedule browser coverage
+
+## M27C follow-up note
+
+M27C kept the horizontal vs vertical Machina split from this pass, but replaced the old custom public-booking calendar with shadcn `Calendar`, switched the frontend baseline to Tailwind + shadcn + Inter, and tightened compact horizontal layout behavior so the docked inspector and tablet capture paths still resolve cleanly.
+
+See:
+
+- `docs/m27c-shadcn-baseline-page-map-calendar.md`
