@@ -368,3 +368,18 @@ M25 reached success:
 - Leviathan is now verified against published `machinalayout@0.3.0`;
 - the biggest M24.5 friction items are concretely mapped to upstream 0.3.0 helpers;
 - the next safe adoption steps are isolated without forcing a broad refactor.
+
+## M26A follow-up
+
+M26A adopted the low-risk MachinaLayout.JS 0.3.0 helpers identified in this plan:
+
+- Scheduling and RustSimulator/shared Machina layout builders now use stack geometry helpers for content-region sizing and reduced padding/remaining-height arithmetic.
+- Local tests cover resolved stack content metrics and remaining-stack queries with `getStackContentRect`, `getStackMainAxisMetrics`, and `getRemainingStackRect`.
+- Playwright snapshot metadata now uses `defineMachinaViewports`, `createViewportMatrix`, `defineMachinaScreens`, and `expandScreenViewportTasks` while mapping generated task metadata back to the existing artifact names.
+
+Deferred to M26B:
+
+- migration of custom DOM summary extraction to `summarizeMachinaDom`;
+- migration of handoff writing to `writeMachinaHandoffBundle`;
+- any handoff JSON shape or artifact folder contract change;
+- broader screen catalog conventions and debug overlay ergonomics.

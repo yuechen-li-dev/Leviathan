@@ -1,4 +1,9 @@
-import type { LayoutRow, Rect } from "machinalayout";
+import {
+  getArrangeContentRect,
+  type LayoutRow,
+  type Rect,
+  type StackArrange,
+} from "machinalayout";
 import type { SchedulingFixtureScenario } from "./fixtures";
 
 export const buildSchedulingLayout = (
@@ -15,9 +20,19 @@ export const buildSchedulingLayout = (
 } => {
   const wide = rootRect.width >= 1080;
   const heroHeight = rootRect.width >= 720 ? 168 : 208;
-  const inspectorHeight = inspectorEnabled ? Math.min(320, Math.max(230, rootRect.height * 0.36)) : 0;
-  const contentHeight = Math.max(240, rootRect.height - heroHeight - inspectorHeight);
+  const inspectorHeight = getSchedulingInspectorHeight(rootRect, inspectorEnabled);
+  const contentHeight = getSchedulingRemainingHeight(rootRect, heroHeight, inspectorHeight);
   const sidebarWidth = Math.min(420, Math.max(320, Math.round(rootRect.width * 0.31)));
+  const contentArrange: StackArrange = {
+    kind: "stack",
+    axis: wide ? "horizontal" : "vertical",
+    gap: 14,
+    padding: 16,
+  };
+  const contentRect = getArrangeContentRect(
+    { x: 0, y: heroHeight, width: rootRect.width, height: contentHeight },
+    contentArrange,
+  );
   const narrowSidebarHeight = Math.max(160, Math.min(280, Math.round(contentHeight * 0.38)));
 
   return {
@@ -39,12 +54,7 @@ export const buildSchedulingLayout = (
         id: "scheduling-content",
         parent: "root",
         frame: { kind: "fill", weight: 1, cross: "fill" },
-        arrange: {
-          kind: "stack",
-          axis: wide ? "horizontal" : "vertical",
-          gap: 14,
-          padding: 16,
-        },
+        arrange: contentArrange,
         debugLabel: wide ? "Scheduling content wide split" : "Scheduling content narrow stack",
       },
       {
@@ -58,8 +68,8 @@ export const buildSchedulingLayout = (
         id: "scheduling-sidebar",
         parent: "scheduling-content",
         frame: wide
-          ? { kind: "fixed", width: sidebarWidth, height: Math.max(220, contentHeight - 32) }
-          : { kind: "fixed", width: Math.max(320, rootRect.width - 32), height: narrowSidebarHeight },
+          ? { kind: "fixed", width: sidebarWidth, height: Math.max(220, contentRect.height) }
+          : { kind: "fixed", width: Math.max(320, contentRect.width), height: narrowSidebarHeight },
         view: "schedulingSidebar",
         debugLabel: wide ? "Scheduling demo sidebar" : "Scheduling demo footer rail",
       },
@@ -68,7 +78,7 @@ export const buildSchedulingLayout = (
             {
               id: "debug-inspector",
               parent: "root",
-              frame: { kind: "fixed" as const, width: rootRect.width, height: Math.min(320, Math.max(230, rootRect.height * 0.36)) },
+              frame: { kind: "fixed" as const, width: rootRect.width, height: inspectorHeight },
               view: "debugInspector",
               debugLabel: "M23 debug layout/state inspector",
             },
@@ -82,3 +92,18 @@ export const buildSchedulingLayout = (
     },
   };
 };
+
+export const getSchedulingInspectorHeight = (rootRect: Rect, enabled: boolean): number =>
+  enabled ? Math.min(320, Math.max(230, rootRect.height * 0.36)) : 0;
+
+export const getSchedulingRemainingHeight = (
+  rootRect: Rect,
+  heroHeight: number,
+  inspectorHeight: number,
+): number =>
+  Math.max(
+    240,
+    getArrangeContentRect(rootRect, { kind: "stack", axis: "vertical" }).height -
+      heroHeight -
+      inspectorHeight,
+  );

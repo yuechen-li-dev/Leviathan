@@ -1,4 +1,9 @@
-import type { LayoutRow, Rect } from "machinalayout";
+import {
+  getArrangeContentRect,
+  type LayoutRow,
+  type Rect,
+  type StackArrange,
+} from "machinalayout";
 import type { AriadneScreenDto, AppManifest, ShellState } from "./types";
 
 export type LeviathanViewData = {
@@ -79,9 +84,19 @@ export function buildRustSimulatorLayout(
 ): { rows: LayoutRow[]; viewData: LeviathanViewData } {
   const wide = rootRect.width >= 860;
   const navHeight = rootRect.width >= 640 ? 76 : 96;
-  const contentHeight = Math.max(360, rootRect.height - navHeight);
+  const contentHeight = getShellRemainingHeight(rootRect, navHeight);
   const narrowPanelHeight = Math.min(360, Math.max(300, Math.round(rootRect.height * 0.42)));
-  const sidePanelWidth = Math.max(288, rootRect.width - 32);
+  const contentArrange: StackArrange = {
+    kind: "stack",
+    axis: wide ? "horizontal" : "vertical",
+    gap: 12,
+    padding: 16,
+  };
+  const contentRect = getArrangeContentRect(
+    { x: 0, y: navHeight, width: rootRect.width, height: contentHeight },
+    contentArrange,
+  );
+  const sidePanelWidth = Math.max(288, contentRect.width);
   return {
     rows: [
       root(rootRect),
@@ -96,12 +111,7 @@ export function buildRustSimulatorLayout(
         id: "rust-content",
         parent: "root",
         frame: { kind: "fill", weight: 1, cross: "fill" },
-        arrange: {
-          kind: "stack",
-          axis: wide ? "horizontal" : "vertical",
-          gap: 12,
-          padding: 16,
-        },
+        arrange: contentArrange,
         debugLabel: "RustSimulator Machina content",
       },
       {
@@ -115,7 +125,7 @@ export function buildRustSimulatorLayout(
         id: "side-panel",
         parent: "rust-content",
         frame: wide
-          ? { kind: "fixed", width: 360, height: contentHeight - 32 }
+          ? { kind: "fixed", width: 360, height: contentRect.height }
           : { kind: "fixed", width: sidePanelWidth, height: narrowPanelHeight },
         arrange: { kind: "stack", axis: "vertical", gap: 12 },
         debugLabel: "Prompt and debug",
@@ -163,3 +173,9 @@ export function buildRustSimulatorLayout(
     },
   };
 }
+
+export const getShellRemainingHeight = (rootRect: Rect, fixedTopHeight: number): number =>
+  Math.max(
+    360,
+    getArrangeContentRect(rootRect, { kind: "stack", axis: "vertical" }).height - fixedTopHeight,
+  );
