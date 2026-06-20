@@ -187,8 +187,11 @@ Added:
 
 Current result:
 
-- the dedicated reschedule script reaches live setup, live confirmation, reschedule affordance, replacement slot selection, replacement hold creation, and replacement payment gating
-- the post-confirmation live verification still fails and remains the main blocker for fully green real reschedule browser coverage
+- M27E.2 stabilized the dedicated reschedule script
+- follow-up details:
+  - `docs/m27e_2-reschedule-real-smoke-stabilization.md`
+- current dedicated real-browser reschedule result:
+  - `npm run test:e2e:reschedule`: passed
 
 ## Tests run
 
@@ -209,7 +212,7 @@ Observed results in this environment:
 - `npm test -- --run`: passed
 - `npm run test:e2e`: passed
 - `npm run test:e2e:real`: passed
-- `npm run test:e2e:reschedule`: failed
+- `npm run test:e2e:reschedule`: passed after M27E.2 stabilization
 
 Backend solution verification:
 
@@ -261,12 +264,10 @@ What remains awkward?
 
 - the desktop snapshot crops mean the reschedule picker/result content is not fully visible in a single top-of-page frame
 - the live replacement flow can still surface `payment_required` later than the initial replacement hold view
-- the dedicated real-browser reschedule smoke still does not complete cleanly after replacement confirmation
+- the dedicated real-browser reschedule smoke required a follow-up stabilization pass in M27E.2
 
 ## Known limitations
 
-- `npm run test:e2e:reschedule` is still failing after the live replacement confirmation phase
-- the live provider-bookings follow-on verification after replacement confirmation remains unstable and needs another pass
 - the fixture screenshots prove the UX clearly, but the desktop capture framing still favors the upper portion of the confirmation page
 - no dedicated mobile reschedule snapshot was added in M27E
 

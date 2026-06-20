@@ -3648,6 +3648,12 @@ function LiveConfirmationView() {
             actor="local-dev-admin"
             booking={booking}
             onOriginalBookingUpdated={setBooking}
+            onReplacementConfirmed={(nextBooking) => {
+              saveLiveContext({
+                providerId: nextBooking.providerId?.value ?? booking.providerId?.value ?? liveContext.providerId,
+                bookingId: nextBooking.id.value,
+              });
+            }}
             providerSlug={loadLiveContext().providerSlug ?? providerSlugFromPath()}
             serviceName="30 minute consult"
           />

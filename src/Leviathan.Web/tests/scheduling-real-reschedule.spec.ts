@@ -23,6 +23,7 @@ test.describe("Scheduling real backend reschedule smoke", () => {
   test("walks the live reschedule replacement flow and verifies old/new booking relations", async ({ page }, testInfo) => {
     test.setTimeout(120_000);
     const issues = monitorPage(page);
+    const networkJournal = monitorRescheduleNetwork(page);
     const routeQuery = `debug=1&debugOverlay=nonInteractiveOverlay&apiBaseUrl=${encodeURIComponent(apiBaseUrl)}`;
 
     await page.goto(`/apps/scheduling/setup?${routeQuery}`);
@@ -85,16 +86,43 @@ test.describe("Scheduling real backend reschedule smoke", () => {
         await clickAction(page, "booking-reschedule-confirm");
       }
     }
+    await testInfo.attach("reschedule-network-after-confirm.json", {
+      body: Buffer.from(JSON.stringify(networkJournal.entries, null, 2), "utf8"),
+      contentType: "application/json",
+    });
     await page.waitForTimeout(1_000);
     const liveContextJson = await page.evaluate(() => window.localStorage.getItem("leviathan.scheduling.liveContext"));
     const liveContext = liveContextJson ? JSON.parse(liveContextJson) as { providerId?: string } : {};
+    await testInfo.attach("reschedule-live-context.json", {
+      body: Buffer.from(JSON.stringify(liveContext, null, 2), "utf8"),
+      contentType: "application/json",
+    });
+    await expect(page.getByTestId("booking-reschedule-result")).toContainText("Replacement confirmed");
+    await expect(page.getByTestId("booking-reschedule-result")).toContainText("Rescheduled to");
+    await expect(page.getByTestId("booking-reschedule-result")).toContainText("Rescheduled from");
     if (!liveContext.providerId) {
       throw new Error("Provider id was not preserved in live scheduling context after reschedule confirmation.");
     }
     await page.goto(`/apps/scheduling/bookings?providerId=${encodeURIComponent(liveContext.providerId)}&${routeQuery}`);
+    await page.waitForLoadState("networkidle");
+    const providerRoute = page.url();
+    const providerBody = await page.locator("body").innerText();
+    await testInfo.attach("reschedule-provider-route.txt", {
+      body: Buffer.from(providerRoute, "utf8"),
+      contentType: "text/plain",
+    });
+    await testInfo.attach("reschedule-provider-body.txt", {
+      body: Buffer.from(providerBody, "utf8"),
+      contentType: "text/plain",
+    });
     await expect(page.getByRole("heading", { name: "Provider bookings" }).first()).toBeVisible();
     await expect(page.getByTestId("provider-bookings-list")).toContainText("Rescheduled");
+    await expect(page.getByTestId("provider-bookings-list")).toContainText("Confirmed");
     await expect(page.getByTestId("provider-booking-detail")).toContainText("Rescheduled to");
+    const replacementBookingRow = page.locator("[data-testid^='booking-row-']").filter({ has: page.getByTestId("booking-cancel") }).first();
+    await replacementBookingRow.getByRole("button", { name: "Inspect" }).evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
     await expect(page.getByTestId("provider-booking-detail")).toContainText("Rescheduled from");
 
     await captureLeviathanUiHandoffBundle(page, testInfo, {
@@ -124,6 +152,93 @@ function monitorPage(page: Page) {
     if (response.status() >= 400) badResponses.push(`${response.status()} ${response.url()}`);
   });
   return { pageErrors, consoleErrors, badResponses };
+}
+
+function monitorRescheduleNetwork(page: Page) {
+  const entries: Array<Record<string, unknown>> = [];
+  page.on("response", async (response) => {
+    const url = response.url();
+    if (
+      !url.includes("/api/apps/scheduling/")
+      || (!url.includes("/reschedule/holds")
+        && !url.includes("/payment/fake-satisfy")
+        && !url.includes("/bookings/confirm")
+        && !url.includes("/bookings?")
+        && !url.includes("/bookings/")
+        && !url.includes("/lifecycle"))
+    ) {
+      return;
+    }
+
+    let body: unknown;
+    try {
+      body = summarizeSchedulingPayload(await response.json());
+    } catch {
+      try {
+        body = await response.text();
+      } catch (error) {
+        body = `unavailable: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
+
+    entries.push({
+      status: response.status(),
+      url,
+      body,
+    });
+  });
+  return { entries };
+}
+
+function summarizeSchedulingPayload(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => summarizeSchedulingPayload(entry));
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const record = value as Record<string, unknown>;
+  const summaryKeys = [
+    "holdId",
+    "replacementHoldId",
+    "bookingId",
+    "oldBookingId",
+    "claimToken",
+    "status",
+    "paymentRequirementStatus",
+    "paymentStatus",
+    "paymentReference",
+    "confirmedAt",
+    "rescheduledAt",
+    "rescheduledToBookingId",
+    "rescheduledFromBookingId",
+    "replacementBookingId",
+    "replacementHoldId",
+    "lastDecisionCode",
+    "workflowState",
+    "currentWorkflowState",
+  ];
+  const summarized: Record<string, unknown> = {};
+  for (const key of summaryKeys) {
+    if (key in record) summarized[key] = record[key];
+  }
+  if ("id" in record && typeof record.id === "object" && record.id && "value" in (record.id as Record<string, unknown>)) {
+    summarized.id = (record.id as Record<string, unknown>).value;
+  }
+  if ("providerId" in record && typeof record.providerId === "object" && record.providerId && "value" in (record.providerId as Record<string, unknown>)) {
+    summarized.providerId = (record.providerId as Record<string, unknown>).value;
+  }
+  if ("serviceId" in record && typeof record.serviceId === "object" && record.serviceId && "value" in (record.serviceId as Record<string, unknown>)) {
+    summarized.serviceId = (record.serviceId as Record<string, unknown>).value;
+  }
+  if ("resourceId" in record && typeof record.resourceId === "object" && record.resourceId && "value" in (record.resourceId as Record<string, unknown>)) {
+    summarized.resourceId = (record.resourceId as Record<string, unknown>).value;
+  }
+  if ("range" in record) summarized.range = record.range;
+  if ("lifecycle" in record) summarized.lifecycle = summarizeSchedulingPayload(record.lifecycle);
+  if ("booking" in record) summarized.booking = summarizeSchedulingPayload(record.booking);
+  return Object.keys(summarized).length ? summarized : record;
 }
 
 function isExpectedControlledResponse(entry: string) {

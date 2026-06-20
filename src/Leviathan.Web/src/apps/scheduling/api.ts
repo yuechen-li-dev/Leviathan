@@ -17,6 +17,14 @@ import type {
   SchedulingService,
 } from "./types";
 
+type ValueObjectLike = { value: string };
+type RawBooking = Booking & {
+  rescheduledToBookingId?: string | ValueObjectLike | null;
+  rescheduledFromBookingId?: string | ValueObjectLike | null;
+  replacementHoldId?: string | ValueObjectLike | null;
+  replacementBookingId?: string | ValueObjectLike | null;
+};
+
 export const schedulingEndpoints = {
   providers: "/apps/scheduling/providers",
   resources: "/apps/scheduling/resources",
@@ -54,13 +62,16 @@ export const createService = (body: {
 }) => api<SchedulingService>(schedulingEndpoints.services, { method: "POST", body: JSON.stringify(body) });
 export const assignResourceToService = (serviceId: string, providerId: string, resourceId: string) => api<SchedulingService>(schedulingEndpoints.assignResource(serviceId), { method: "POST", body: JSON.stringify({ providerId, resourceId }) });
 export const createAvailabilityRule = (body: { providerId: string; resourceId: string; timeZoneId: string; daysOfWeek: string[]; localStartTime: string; localEndTime: string }) => api<AvailabilityRule>(schedulingEndpoints.availabilityRules, { method: "POST", body: JSON.stringify(body) });
-export const listProviderBookings = (providerId: string) => api<Booking[]>(schedulingEndpoints.bookings(providerId));
-export const getBooking = (bookingId: string) => api<Booking>(schedulingEndpoints.booking(bookingId));
+export const listProviderBookings = async (providerId: string) => normalizeBookings(await api<RawBooking[]>(schedulingEndpoints.bookings(providerId)));
+export const getBooking = async (bookingId: string) => normalizeBooking(await api<RawBooking>(schedulingEndpoints.booking(bookingId)));
 export const getBookingAudit = (bookingId: string, providerId: string) => api<BookingAuditEvent[]>(schedulingEndpoints.bookingAudit(bookingId, providerId));
 export const getBookingLifecycle = (bookingId: string) => api<SchedulingLifecycleSummary>(schedulingEndpoints.bookingLifecycle(bookingId));
 export const getHoldLifecycle = (holdId: string, providerId: string) => api<SchedulingLifecycleSummary>(schedulingEndpoints.holdLifecycle(holdId, providerId));
 export const getBookingNotifications = (bookingId: string) => api<ScheduledNotification[]>(schedulingEndpoints.bookingNotifications(bookingId));
-export const cancelBooking = (bookingId: string, reason = "provider_cancelled", message?: string, actor = "local-dev-admin") => api<CancelBookingResponse>(schedulingEndpoints.cancelBooking(bookingId), { method: "POST", body: JSON.stringify({ reason, message, actor }) });
+export const cancelBooking = async (bookingId: string, reason = "provider_cancelled", message?: string, actor = "local-dev-admin") => {
+  const response = await api<CancelBookingResponse>(schedulingEndpoints.cancelBooking(bookingId), { method: "POST", body: JSON.stringify({ reason, message, actor }) });
+  return { ...response, booking: normalizeBooking(response.booking as RawBooking) };
+};
 export const createReplacementHold = (
   bookingId: string,
   body: {
@@ -95,8 +106,29 @@ export const listSlots = (slug: string, serviceId: string, from: string, to: str
 export const createHold = (slot: BookableSlot) => api<HoldResponse>(schedulingEndpoints.holds, { method: "POST", body: JSON.stringify({ providerId: slot.providerId, serviceId: slot.serviceId, resourceId: slot.resourceId, startsAtUtc: slot.startsAtUtc, endsAtUtc: slot.endsAtUtc, timeZoneId: slot.timeZoneId }) });
 export const submitIntake = (holdId: string, claimToken: string, customer: { name: string; email: string; phone?: string; notes?: string }) =>
   api<HoldResponse>(schedulingEndpoints.submitIntake(holdId), { method: "POST", body: JSON.stringify({ claimToken, name: customer.name, email: customer.email, phone: customer.phone, notes: customer.notes }) });
-export const confirmBooking = (holdId: string, claimToken: string, customer: { name: string; email: string; phone?: string; notes?: string }) => api<Booking>(schedulingEndpoints.confirm, { method: "POST", body: JSON.stringify({ holdId, claimToken, customer }) });
+export const confirmBooking = async (holdId: string, claimToken: string, customer: { name: string; email: string; phone?: string; notes?: string }) =>
+  normalizeBooking(await api<RawBooking>(schedulingEndpoints.confirm, { method: "POST", body: JSON.stringify({ holdId, claimToken, customer }) }));
 export const fakeSatisfyPayment = (holdId: string, claimToken: string, actor = "local-dev-admin") =>
   api<{ holdId: string; paymentRequirementStatus: string; paymentReference: string; paymentSatisfiedAt: string; auditEventId: string }>(schedulingEndpoints.fakeSatisfyPayment(holdId), { method: "POST", body: JSON.stringify({ claimToken, actor }) });
 export const fakeSendNotification = (notificationId: string, actor = "local-dev-admin") =>
   api<{ notification: ScheduledNotification; auditEventId: string }>(schedulingEndpoints.fakeSendNotification(notificationId), { method: "POST", body: JSON.stringify({ actor }) });
+
+function normalizeBookings(bookings: RawBooking[]): Booking[] {
+  return bookings.map(normalizeBooking);
+}
+
+function normalizeBooking(booking: RawBooking): Booking {
+  return {
+    ...booking,
+    rescheduledToBookingId: normalizeValueObject(booking.rescheduledToBookingId),
+    rescheduledFromBookingId: normalizeValueObject(booking.rescheduledFromBookingId),
+    replacementHoldId: normalizeValueObject(booking.replacementHoldId),
+    replacementBookingId: normalizeValueObject(booking.replacementBookingId),
+  };
+}
+
+function normalizeValueObject(value?: string | ValueObjectLike | null) {
+  if (!value) return undefined;
+  if (typeof value === "string") return value;
+  return value.value;
+}
