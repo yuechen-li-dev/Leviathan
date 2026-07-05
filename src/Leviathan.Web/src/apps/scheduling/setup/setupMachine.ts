@@ -14,6 +14,7 @@
 
 import { M } from "machinalayout/machina";
 import type { DeusMachine, DeusStatePath } from "machinalayout/deus";
+import { matchEnum } from "machinalayout/match";
 import type { AvailabilityRule, BookableResource, Provider, SchedulingService } from "../types";
 import type { SetupDraft } from "./types";
 import { weekdayOrder } from "./types";
@@ -206,49 +207,22 @@ export function phaseFromStatePath(path: DeusStatePath): SetupPhase {
 
 /** Which step a given phase corresponds to, for actuator dispatch and button copy. */
 export function stepForPhase(phase: SetupPhase): "provider" | "resource" | "service" | "availability" | null {
-  // Note: would use matchEnum here (machinalayout/match) for a compile-time
-  // exhaustiveness guarantee, matching the DeusMachina port audit's original
-  // recommendation - but the installed `machinalayout@0.4.0` from npm
-  // predates the "Expose match subpath" commit, which landed on GitHub's
-  // main branch after the 0.4.0 tag was published. `match`, `style`, and
-  // `static` all exist on main but are not in the published package this
-  // project actually depends on. Plain switch + `never` check gets the same
-  // exhaustiveness guarantee without the missing dependency; worth
-  // revisiting once a 0.4.x patch (or 0.5.0) actually ships it to npm.
-  switch (phase) {
-    case "idle":
-      return null;
-    case "providerPending":
-      return "provider";
-    case "resourcePending":
-      return "resource";
-    case "servicePending":
-      return "service";
-    case "availabilityPending":
-      return "availability";
-    default: {
-      const exhaustive: never = phase;
-      return exhaustive;
-    }
-  }
+  return matchEnum<SetupPhase, "provider" | "resource" | "service" | "availability" | null>(phase, {
+    idle: () => null,
+    providerPending: () => "provider",
+    resourcePending: () => "resource",
+    servicePending: () => "service",
+    availabilityPending: () => "availability",
+  });
 }
 
 /** Busy-button copy per phase - replaces the old `busyStep === "x" ? "Creating x…" : ...` ternary chain. */
 export function busyLabel(phase: SetupPhase): string | null {
-  switch (phase) {
-    case "idle":
-      return null;
-    case "providerPending":
-      return "Creating provider…";
-    case "resourcePending":
-      return "Creating resource…";
-    case "servicePending":
-      return "Creating service…";
-    case "availabilityPending":
-      return "Creating availability…";
-    default: {
-      const exhaustive: never = phase;
-      return exhaustive;
-    }
-  }
+  return matchEnum<SetupPhase, string | null>(phase, {
+    idle: () => null,
+    providerPending: () => "Creating provider…",
+    resourcePending: () => "Creating resource…",
+    servicePending: () => "Creating service…",
+    availabilityPending: () => "Creating availability…",
+  });
 }
