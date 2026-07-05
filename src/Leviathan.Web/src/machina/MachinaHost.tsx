@@ -19,7 +19,7 @@ import {
   setDebugInspectorEnabled,
   summarizeShellState,
 } from "./debugInspector";
-import { resolveInspectorBehavior } from "./inspectorBehavior";
+import { useLeviathanInspector } from "./inspectorBehavior";
 import { resolveApiBaseUrl } from "./apiConfig";
 import { viewRegistry } from "./views";
 
@@ -42,7 +42,6 @@ export function MachinaHost() {
   const stateRef = useRef(state);
   const [rootRect, setRootRect] = useState<Rect>(viewport);
   const [debugEnabled, setDebugEnabled] = useState(() => debugFlagFromLocation(window.location, window.localStorage));
-  const [inspectorOpen, setInspectorOpen] = useState(() => debugFlagFromLocation(window.location, window.localStorage));
   const historyRef = useRef(new DispatchHistoryBuffer());
 
   useEffect(() => {
@@ -82,17 +81,17 @@ export function MachinaHost() {
   }, [dispatch]);
 
   const schedulingScenario = state.route === "scheduling" ? resolveSchedulingFixtureScenario(window.location) : null;
-  const inspectorBehavior = resolveInspectorBehavior({
+  const inspector = useLeviathanInspector({
     location: window.location,
     debugEnabled,
-    inspectorOpen,
+    initialInspectorOpen: debugEnabled,
   });
   const doc =
     state.route === "rust-simulator"
-      ? buildRustSimulatorLayout(rootRect, state, inspectorBehavior.showDockedPanel)
+      ? buildRustSimulatorLayout(rootRect, state, inspector.showDockedPanel)
       : state.route === "scheduling" && schedulingScenario
-        ? buildSchedulingLayout(rootRect, schedulingScenario, inspectorBehavior.showDockedPanel)
-        : buildAppsLayout(rootRect, inspectorBehavior.showDockedPanel);
+        ? buildSchedulingLayout(rootRect, schedulingScenario, inspector.showDockedPanel)
+        : buildAppsLayout(rootRect, inspector.showDockedPanel);
   const layout = useMemo(() => resolveLayoutRows(doc.rows, rootRect), [doc.rows, rootRect]);
   const layoutNodes = useMemo(() => inspectLayout(layout), [layout]);
   const recentEvents = historyRef.current.snapshot();
@@ -100,7 +99,7 @@ export function MachinaHost() {
   const snapshot = useMemo(() => createDebugSnapshot(state, layoutNodes, recentEvents, apiBaseUrl), [state, layoutNodes, recentEvents, apiBaseUrl]);
   const debugInspector = {
     enabled: debugEnabled,
-    open: inspectorOpen,
+    open: inspector.showDockedPanel,
     apiBaseUrl,
     shellSummary: summarizeShellState(state),
     fullState: state,
@@ -108,11 +107,12 @@ export function MachinaHost() {
     recentEvents,
     promptMapping: inspectPromptMapping(state),
     snapshot,
-    toggleOpen: () => setInspectorOpen((open) => !open),
+    lastTrace: inspector.lastTrace,
+    toggleOpen: inspector.togglePanel,
     disable: () => {
       setDebugInspectorEnabled(window.localStorage, false);
       setDebugEnabled(false);
-      setInspectorOpen(false);
+      inspector.disable();
     },
   };
   const viewData = { ...doc.viewData, appList: { apps: state.apps, error: state.error, status: state.status }, debugInspector };
@@ -132,7 +132,7 @@ export function MachinaHost() {
       recentEvents,
       promptMapping: debugInspector.promptMapping,
       fullState: state,
-      inspectorOpen,
+      inspectorOpen: inspector.showDockedPanel,
     };
 
     window.__LEVIATHAN_DEBUG_SNAPSHOT__ = payload;
@@ -142,13 +142,13 @@ export function MachinaHost() {
       delete window.__LEVIATHAN_DEBUG_SNAPSHOT__;
       delete window.__LEVIATHAN_GET_DEBUG_SNAPSHOT__;
     };
-  }, [debugEnabled, snapshot, debugInspector.shellSummary, layoutNodes, recentEvents, debugInspector.promptMapping, state, inspectorOpen]);
+  }, [debugEnabled, snapshot, debugInspector.shellSummary, layoutNodes, recentEvents, debugInspector.promptMapping, state, inspector.showDockedPanel]);
 
   const content = (
     <>
-      {debugEnabled && !inspectorBehavior.showOverlay && (
-        <button className="inspector-toggle" onClick={() => setInspectorOpen((open) => !open)}>
-          Inspector {inspectorOpen ? "−" : "+"}
+      {debugEnabled && !inspector.showOverlay && (
+        <button className="inspector-toggle" onClick={inspector.togglePanel}>
+          Inspector {inspector.showDockedPanel ? "−" : "+"}
         </button>
       )}
       <MachinaReactView
@@ -158,11 +158,11 @@ export function MachinaHost() {
         viewData={viewData}
         nodeData={nodeData}
         debugOverlay={
-          inspectorBehavior.showOverlay
+          inspector.showOverlay
             ? {
-                mode: inspectorBehavior.mode,
-                labels: inspectorBehavior.showLabels,
-                borders: inspectorBehavior.showBorders,
+                mode: inspector.mode,
+                labels: inspector.showLabels,
+                borders: inspector.showBorders,
               }
             : undefined
         }

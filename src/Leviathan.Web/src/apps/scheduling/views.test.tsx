@@ -5,14 +5,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { cancelBooking, schedulingEndpoints } from "./api";
 import { slotSelected } from "./dispatch";
 import { resolveSchedulingFixtureScenario } from "./fixtures";
+import { AdminModeBanner } from "./shared/AdminGateBanner";
+import { ProviderSetupView } from "./setup/ProviderSetupFlow";
 import {
-  AdminModeBanner,
   BookingCalendarRegionView,
   BookingDebugPanel,
   BookingReschedulePanel,
   ConfirmationView,
   ProviderBookingsView,
-  ProviderSetupView,
   SchedulingBookingPageProvider,
   SchedulingHomeView,
   SlotPickerView,

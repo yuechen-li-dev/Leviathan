@@ -82,13 +82,21 @@ describe("scheduling layout geometry", () => {
     );
   });
 
-  it("adds explicit provider setup regions for the guided setup surface", () => {
+  it("resolves the guided setup surface through a single rendered slot (M0: dead sub-rows removed)", () => {
     const rootRect = { x: 0, y: 0, width: 1440, height: 1024 };
     const { rows } = buildSchedulingLayout(rootRect, setupScenario, false);
 
-    expect(rows.map((row) => row.id)).toEqual(
+    expect(rows.map((row) => row.id)).toEqual(expect.arrayContaining(["scheduling-main", "provider-setup-root"]));
+    // M0 finding: the pre-rewrite version of this branch also emitted
+    // provider-setup-hero/-warning/-steps/-form/-preview/-result as
+    // absolute-positioned rows, computed from ~40 lines of cascading pixel
+    // math, but never assigned any of them a `view` - nothing ever rendered
+    // through them. ProviderSetupFlow renders as one Tailwind-laid-out tree
+    // inside provider-setup-root's single "schedulingMain" slot. Removed as
+    // dead code; asserting their absence here so they don't quietly come
+    // back in a future edit.
+    expect(rows.map((row) => row.id)).not.toEqual(
       expect.arrayContaining([
-        "provider-setup-root",
         "provider-setup-hero",
         "provider-setup-warning",
         "provider-setup-steps",
@@ -97,6 +105,9 @@ describe("scheduling layout geometry", () => {
         "provider-setup-result",
       ]),
     );
+    const root = rows.find((row) => row.id === "provider-setup-root");
+    expect(root?.view).toBe("schedulingMain");
+    expect(root?.frame).toMatchObject({ kind: "fixed" });
     expect(() => resolveLayoutRows(rows, rootRect)).not.toThrow();
   });
 

@@ -6,6 +6,7 @@ import {
   type LayoutRow,
   type Rect,
 } from "machinalayout";
+import { M } from "machinalayout/machina";
 import type { SchedulingFixtureScenario } from "./fixtures";
 
 const schedulingContentGap = 14;
@@ -113,87 +114,23 @@ export const buildSchedulingLayout = (
   const providerListHeight = 160 + Math.round(providerExtraHeight * 0.5);
   const providerDetailHeight = 120 + Math.round(providerExtraHeight * 0.2);
   const providerRescheduleHeight = providerStackAvailableHeight - providerListHeight - providerDetailHeight;
-  const setupWide = rootRect.width >= 1180;
-  const setupGap = 16;
-  const setupHeroHeight = Math.max(80, Math.min(112, Math.round(mainHeight * 0.14)));
-  const setupWarningHeight = Math.max(72, Math.min(104, Math.round(mainHeight * 0.14)));
-  const setupStepsHeight = Math.max(120, Math.min(180, Math.round(mainHeight * 0.2)));
-  const setupBodyY = setupHeroHeight + setupGap + setupWarningHeight + setupGap + setupStepsHeight + setupGap;
-  const setupBodyHeight = Math.max(220, mainHeight - setupBodyY);
-  const setupFormWidth = setupWide ? Math.max(360, Math.round((mainWidth - setupGap) * 0.62)) : mainWidth;
-  const setupPreviewWidth = setupWide ? Math.max(280, mainWidth - setupFormWidth - setupGap) : mainWidth;
-  const setupPreviewHeight = setupWide ? Math.max(160, Math.round(setupBodyHeight * 0.48)) : Math.max(180, Math.round(setupBodyHeight * 0.28));
-  const setupResultHeight = setupWide ? Math.max(140, setupBodyHeight - setupPreviewHeight - setupGap) : Math.max(180, Math.round(setupBodyHeight * 0.26));
-  const setupFormHeight = setupWide ? setupBodyHeight : Math.max(340, setupBodyHeight - setupPreviewHeight - setupResultHeight - setupGap * 2);
-  const setupPreviewY = setupWide ? setupBodyY : setupBodyY + setupFormHeight + setupGap;
-  const setupResultY = setupWide ? setupPreviewY + setupPreviewHeight + setupGap : setupPreviewY + setupPreviewHeight + setupGap;
 
   const mainSurfaceRows =
     scenario.surface === "setup"
-      ? [
-          {
-            id: "scheduling-main",
-            parent: "scheduling-content",
-            frame: { kind: "fill" as const, weight: wide ? 5 : 1, cross: "fill" as const },
-            arrange: { kind: "stack" as const, axis: "vertical" as const, gap: 12, padding: 0 },
-            debugLabel: `${scenario.surface} main surface`,
-          },
-          {
-            id: "provider-setup-root",
-            parent: "scheduling-main",
-            frame: { kind: "fixed" as const, width: mainWidth, height: mainHeight },
-            view: "schedulingMain",
-            debugLabel: "Provider setup root",
-          },
-          {
-            id: "provider-setup-hero",
-            parent: "provider-setup-root",
-            frame: { kind: "absolute" as const, x: 0, y: 0, width: mainWidth, height: setupHeroHeight },
-            debugLabel: "Provider setup hero",
-          },
-          {
-            id: "provider-setup-warning",
-            parent: "provider-setup-root",
-            frame: { kind: "absolute" as const, x: 0, y: setupHeroHeight + setupGap, width: mainWidth, height: setupWarningHeight },
-            debugLabel: "Provider setup warning",
-          },
-          {
-            id: "provider-setup-steps",
-            parent: "provider-setup-root",
-            frame: { kind: "absolute" as const, x: 0, y: setupHeroHeight + setupGap + setupWarningHeight + setupGap, width: mainWidth, height: setupStepsHeight },
-            debugLabel: "Provider setup steps",
-          },
-          {
-            id: "provider-setup-form",
-            parent: "provider-setup-root",
-            frame: { kind: "absolute" as const, x: 0, y: setupBodyY, width: setupFormWidth, height: setupFormHeight },
-            debugLabel: "Provider setup form",
-          },
-          {
-            id: "provider-setup-preview",
-            parent: "provider-setup-root",
-            frame: {
-              kind: "absolute" as const,
-              x: setupWide ? setupFormWidth + setupGap : 0,
-              y: setupPreviewY,
-              width: setupPreviewWidth,
-              height: setupPreviewHeight,
-            },
-            debugLabel: "Provider setup preview",
-          },
-          {
-            id: "provider-setup-result",
-            parent: "provider-setup-root",
-            frame: {
-              kind: "absolute" as const,
-              x: setupWide ? setupFormWidth + setupGap : 0,
-              y: setupResultY,
-              width: setupPreviewWidth,
-              height: setupResultHeight,
-            },
-            debugLabel: "Provider setup result",
-          },
-        ]
+      ? // M0 note: the old version of this branch computed six additional
+        // absolute-positioned child rows here (hero/warning/steps/form/
+        // preview/result, ~40 lines of cascading pixel math). None of them
+        // were ever assigned a `view`, so nothing ever rendered through
+        // them - ProviderSetupFlow renders as one Tailwind-laid-out tree
+        // inside the single "schedulingMain" slot below. Removed as dead
+        // code rather than ported; see the M0 writeup for the same pattern
+        // still present (and still untouched, pending M2) in the
+        // confirmation branch's `booking-status-*` rows just below.
+        M.vstack(
+          "scheduling-main",
+          { parent: "scheduling-content", gap: 12, padding: 0, frame: { kind: "fill", weight: wide ? 5 : 1, cross: "fill" } },
+          [M.node("provider-setup-root", { frame: { kind: "fixed", width: mainWidth, height: mainHeight }, view: "schedulingMain", debugLabel: "Provider setup root" })],
+        ).rows()
       : scenario.surface === "confirmation"
       ? [
           {

@@ -1,4 +1,5 @@
 import type { MachinaSlotProps } from "machinalayout/react";
+import { formatDeusStepTrace } from "machinalayout/deus";
 import { MachinaTextView } from "machinalayout/text/react";
 import type { DispatchFn } from "./types";
 import type { LeviathanViewData } from "./layouts";
@@ -207,6 +208,7 @@ type DebugInspectorData = {
   recentEvents: unknown[];
   promptMapping?: unknown;
   snapshot: unknown;
+  lastTrace?: import("machinalayout/deus").DeusStepTrace | null;
   disable: () => void;
 };
 
@@ -249,6 +251,10 @@ export function DebugInspectorView(props: SlotProps) {
         <section>
           <h3>Ariadne mapping</h3>
           <pre>{JSON.stringify(data?.promptMapping ?? null, null, 2)}</pre>
+        </section>
+        <section>
+          <h3>Debug overlay machine (Deus)</h3>
+          <pre>{data?.lastTrace ? formatDeusStepTrace(data.lastTrace) : "no transitions dispatched yet"}</pre>
         </section>
       </div>
       <details>
