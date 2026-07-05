@@ -6,17 +6,17 @@ import { cancelBooking, schedulingEndpoints } from "./api";
 import { slotSelected } from "./dispatch";
 import { resolveSchedulingFixtureScenario } from "./fixtures";
 import { AdminModeBanner } from "./shared/AdminGateBanner";
+import { StatusChip } from "./shared/StatusChip";
 import { ProviderSetupView } from "./setup/ProviderSetupFlow";
+import { SchedulingHomeView } from "./landing/SchedulingHomeView";
+import { ProviderBookingsView } from "./bookings/ProviderBookingsView";
+import { BookingDebugPanel } from "./bookings/BookingDebugPanel";
 import {
   BookingCalendarRegionView,
-  BookingDebugPanel,
   BookingReschedulePanel,
   ConfirmationView,
-  ProviderBookingsView,
   SchedulingBookingPageProvider,
-  SchedulingHomeView,
   SlotPickerView,
-  StatusChip,
 } from "./views";
 
 const slot = {

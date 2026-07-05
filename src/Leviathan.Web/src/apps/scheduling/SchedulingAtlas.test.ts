@@ -9,6 +9,8 @@ describe("SchedulingAtlas", () => {
       "shared-format",
       "shared-live-context",
       "shared-admin-gate-banner",
+      "shared-status-chip",
+      "shared-booking-meta-panels",
       "front-page",
       "public-booking",
       "confirmation",
@@ -21,5 +23,11 @@ describe("SchedulingAtlas", () => {
     const setup = SchedulingAtlas.sections.find((s) => s.key === "setup");
     expect(setup?.owns).toContain("LiveProviderSetupView");
     expect(setup?.tags).toContain("deusmachina");
+  });
+
+  it("the bookings section (M1's deliverable) reflects the deferred M2.5 orchestration port", () => {
+    const bookings = SchedulingAtlas.sections.find((s) => s.key === "bookings");
+    expect(bookings?.owns).toContain("LiveProviderBookingsView");
+    expect(bookings?.notes).toContain("M2.5");
   });
 });

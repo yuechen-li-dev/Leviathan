@@ -203,13 +203,20 @@ describe("scheduling layout geometry", () => {
     expect(() => resolveLayoutRows(rows, rootRect)).not.toThrow();
   });
 
-  it("adds explicit provider booking status regions for bookings surfaces", () => {
+  it("resolves the bookings surface through a single rendered slot (M1: dead sub-rows removed)", () => {
     const rootRect = { x: 0, y: 0, width: 1440, height: 1024 };
     const { rows } = buildSchedulingLayout(rootRect, bookingsScenario, false);
 
-    expect(rows.map((row) => row.id)).toEqual(
+    expect(rows.map((row) => row.id)).toEqual(expect.arrayContaining(["scheduling-main", "provider-bookings-root"]));
+    // M1 finding: the pre-rewrite version of this branch emitted
+    // provider-bookings-list/-detail and booking-reschedule-root/-current/
+    // -actions/-result as further rows, computed from providerListHeight/
+    // providerDetailHeight/providerRescheduleHeight and three more absolute
+    // splits, but never assigned any of them a `view` - nothing ever
+    // rendered through them. Same pattern M0 found and removed in the setup
+    // branch. Asserting their absence here so they don't quietly come back.
+    expect(rows.map((row) => row.id)).not.toEqual(
       expect.arrayContaining([
-        "provider-bookings-root",
         "provider-bookings-list",
         "provider-booking-detail",
         "booking-reschedule-root",
@@ -218,6 +225,9 @@ describe("scheduling layout geometry", () => {
         "booking-reschedule-result",
       ]),
     );
+    const root = rows.find((row) => row.id === "provider-bookings-root");
+    expect(root?.view).toBe("schedulingMain");
+    expect(root?.frame).toMatchObject({ kind: "fixed" });
     expect(() => resolveLayoutRows(rows, rootRect)).not.toThrow();
   });
 });

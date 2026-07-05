@@ -109,11 +109,6 @@ export const buildSchedulingLayout = (
   const rescheduleReplacementHeight = Math.max(40, Math.round(confirmationRescheduleHeight * 0.2));
   const rescheduleActionsHeight = Math.max(34, Math.round(confirmationRescheduleHeight * 0.14));
   const rescheduleResultHeight = Math.max(34, confirmationRescheduleHeight - rescheduleCurrentHeight - reschedulePickerHeight - rescheduleReplacementHeight - rescheduleActionsHeight - confirmationGap * 4);
-  const providerStackAvailableHeight = Math.max(400, mainHeight - 32);
-  const providerExtraHeight = Math.max(0, providerStackAvailableHeight - 400);
-  const providerListHeight = 160 + Math.round(providerExtraHeight * 0.5);
-  const providerDetailHeight = 120 + Math.round(providerExtraHeight * 0.2);
-  const providerRescheduleHeight = providerStackAvailableHeight - providerListHeight - providerDetailHeight;
 
   const mainSurfaceRows =
     scenario.surface === "setup"
@@ -215,68 +210,29 @@ export const buildSchedulingLayout = (
           },
         ]
       : scenario.surface === "bookings"
-        ? [
-            {
-              id: "scheduling-main",
-              parent: "scheduling-content",
-              frame: { kind: "fill" as const, weight: wide ? 5 : 1, cross: "fill" as const },
-              arrange: { kind: "stack" as const, axis: "vertical" as const, gap: 16, padding: 0 },
-              debugLabel: `${scenario.surface} main surface`,
-            },
-            {
-              id: "provider-bookings-root",
-              parent: "scheduling-main",
-              frame: { kind: "fixed" as const, width: mainWidth, height: mainHeight },
-              view: "schedulingMain",
-              arrange: { kind: "stack" as const, axis: "vertical" as const, gap: 16, padding: 0 },
-              debugLabel: "Provider bookings root",
-            },
-            {
-              id: "provider-bookings-list",
-              parent: "provider-bookings-root",
-              frame: { kind: "fixed" as const, width: mainWidth, height: providerListHeight },
-              debugLabel: "Provider bookings list",
-            },
-            {
-              id: "provider-booking-detail",
-              parent: "provider-bookings-root",
-              frame: { kind: "fixed" as const, width: mainWidth, height: providerDetailHeight },
-              debugLabel: "Provider booking detail",
-            },
-            {
-              id: "booking-reschedule-root",
-              parent: "provider-bookings-root",
-              frame: { kind: "fixed" as const, width: mainWidth, height: providerRescheduleHeight },
-              debugLabel: "Provider booking reschedule root",
-            },
-            {
-              id: "booking-reschedule-current",
-              parent: "booking-reschedule-root",
-              frame: { kind: "absolute" as const, x: 0, y: 0, width: mainWidth, height: Math.max(40, Math.round(providerRescheduleHeight * 0.22)) },
-              debugLabel: "Provider booking reschedule current",
-            },
-            {
-              id: "booking-reschedule-actions",
-              parent: "booking-reschedule-root",
-              frame: { kind: "absolute" as const, x: 0, y: Math.max(48, Math.round(providerRescheduleHeight * 0.26)), width: mainWidth, height: Math.max(36, Math.round(providerRescheduleHeight * 0.18)) },
-              debugLabel: "Provider booking reschedule actions",
-            },
-            {
-              id: "booking-reschedule-result",
-              parent: "booking-reschedule-root",
-              frame: { kind: "absolute" as const, x: 0, y: Math.max(92, Math.round(providerRescheduleHeight * 0.5)), width: mainWidth, height: Math.max(48, Math.round(providerRescheduleHeight * 0.42)) },
-              debugLabel: "Provider booking reschedule result",
-            },
-          ]
-        : [
-            {
-              id: "scheduling-main",
-              parent: "scheduling-content",
-              frame: { kind: "fill" as const, weight: wide ? 5 : 1, cross: "fill" as const },
-              view: "schedulingMain",
-              debugLabel: `${scenario.surface} main surface`,
-            },
-          ];
+        ? // M1 note: same dead-row pattern M0 found and removed in the
+          // setup branch - provider-bookings-list/-detail and
+          // booking-reschedule-root/-current/-actions/-result were six rows
+          // of computed geometry (providerListHeight/providerDetailHeight/
+          // providerRescheduleHeight and three further absolute splits)
+          // that never got a `view` assigned, so nothing ever rendered
+          // through them. ProviderBookingsView/LiveProviderBookingsView
+          // render as one Tailwind-laid-out tree inside the single
+          // "schedulingMain" slot below, same as setup did. Removed rather
+          // than ported. The confirmation branch just below almost
+          // certainly has the same pattern (`booking-status-*` rows);
+          // that's M2's cleanup, not this one's.
+          M.vstack(
+            "scheduling-main",
+            { parent: "scheduling-content", gap: 16, padding: 0, frame: { kind: "fill", weight: wide ? 5 : 1, cross: "fill" } },
+            [M.node("provider-bookings-root", { frame: { kind: "fixed", width: mainWidth, height: mainHeight }, view: "schedulingMain", debugLabel: "Provider bookings root" })],
+          ).rows()
+        : M.node("scheduling-main", {
+            parent: "scheduling-content",
+            frame: { kind: "fill", weight: wide ? 5 : 1, cross: "fill" },
+            view: "schedulingMain",
+            debugLabel: `${scenario.surface} main surface`,
+          }).rows();
 
   return {
     rows: [

@@ -12,7 +12,7 @@ import { defineMachinaAtlas } from "machinalayout/atlas";
 export const SchedulingAtlas = defineMachinaAtlas({
   app: "Scheduling",
   notes:
-    "Second app on the Leviathan platform (Ariadne is first). M0 (this pass) rewrote the provider setup wizard as its own directory with a real DeusMachina-backed live orchestrator; landing/booking/confirmation/bookings surfaces are still inside the monolithic views.tsx/layouts.ts pending M1-M3.",
+    "Second app on the Leviathan platform (Ariadne is first). M0 rewrote the provider setup wizard with a real DeusMachina-backed live orchestrator. M1 moved landing and the bookings list into their own directories (structural + dead-row cleanup only - the bookings list's live orchestration is deliberately deferred to M2.5, since it embeds BookingReschedulePanel and needs to know M2's reschedule board shape first). Public booking and confirmation surfaces are still inside views.tsx/layouts.ts pending M2-M3.",
   sections: [
     {
       key: "setup",
@@ -67,8 +67,28 @@ export const SchedulingAtlas = defineMachinaAtlas({
       kind: "shared",
       file: "shared/AdminGateBanner.tsx",
       owns: ["AdminModeBanner", "OwnershipSummary"],
-      usedBy: ["setup", "confirmation"],
+      usedBy: ["setup", "confirmation", "front-page", "bookings"],
       tags: ["shared", "presentational"],
+    },
+    {
+      key: "shared-status-chip",
+      name: "Status badge",
+      kind: "shared",
+      file: "shared/StatusChip.tsx",
+      owns: ["StatusChip"],
+      usedBy: ["bookings", "confirmation", "public-booking", "shared-booking-meta-panels"],
+      tags: ["shared", "presentational", "m1"],
+      notes: "Extracted in M1 - used by bookings and confirmation both, so it couldn't stay wherever it was first touched.",
+    },
+    {
+      key: "shared-booking-meta-panels",
+      name: "Payment/notification summary panels",
+      kind: "shared",
+      file: "shared/BookingMetaPanels.tsx",
+      owns: ["BookingMetaPanels", "NotificationSummaryList"],
+      uses: ["shared-status-chip", "shared-format"],
+      usedBy: ["bookings", "confirmation"],
+      tags: ["shared", "presentational", "m1"],
     },
     {
       key: "front-page",
@@ -76,11 +96,11 @@ export const SchedulingAtlas = defineMachinaAtlas({
       kind: "page",
       route: "/apps/scheduling",
       fixture: "landing",
-      file: "views.tsx",
       owns: ["SchedulingHomeView", "LiveSchedulingLandingView"],
-      uses: ["shared/format", "shared/liveContext"],
-      tags: ["scheduling", "landing", "not-yet-split"],
-      notes: "Candidate for M1 per the milestone ladder. Still lives in views.tsx.",
+      uses: ["shared/format", "shared/liveContext", "shared/AdminGateBanner"],
+      usedBy: ["shared-shell"],
+      tags: ["scheduling", "landing", "m1"],
+      notes: "M1 deliverable. Pure relocate - no orchestration to port, layouts.ts's fallback branch was already a single clean row before this milestone.",
     },
     {
       key: "public-booking",
@@ -113,11 +133,12 @@ export const SchedulingAtlas = defineMachinaAtlas({
       kind: "page",
       route: "/apps/scheduling/bookings",
       fixture: "notification-summary",
-      file: "views.tsx",
-      owns: ["ProviderBookingsView", "LiveProviderBookingsView"],
-      uses: ["shared/format", "shared/liveContext"],
-      tags: ["scheduling", "bookings", "not-yet-split"],
-      notes: "Candidate for M1, alongside front-page. Read-only display of server-computed lifecycle state - no DeusMachina port needed here per the port audit's 'what not to port' section.",
+      owns: ["ProviderBookingsView", "LiveProviderBookingsView", "BookingDebugPanel"],
+      uses: ["shared/format", "shared/liveContext", "shared/AdminGateBanner", "shared/StatusChip", "shared/BookingMetaPanels"],
+      usedBy: ["shared-shell"],
+      tags: ["scheduling", "bookings", "m1"],
+      notes:
+        "M1 deliverable: structural move + dead-row cleanup only (six dead rows removed from layouts.ts's bookings branch, same pattern M0 found in setup). Live orchestration (refresh/select-detail/cancel, currently one undifferentiated `busy` boolean) is a real DeusMachina candidate but deliberately deferred to M2.5 - LiveProviderBookingsView embeds BookingReschedulePanel (still confirmation-territory, pending M2), so a temporary import from ../views is expected here until M2 extracts it.",
     },
     {
       key: "shared-shell",
