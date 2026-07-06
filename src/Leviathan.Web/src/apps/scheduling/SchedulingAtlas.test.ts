@@ -46,4 +46,12 @@ describe("SchedulingAtlas", () => {
     expect(setup?.owns).toContain("createProviderTask");
     expect(setup?.tags).toEqual(expect.arrayContaining(["deusmachina", "async"]));
   });
+
+  it("the public-booking section (M3's deliverable) reflects the real DeusMachina + async port and the dead-code deletion", () => {
+    const publicBooking = SchedulingAtlas.sections.find((s) => s.key === "public-booking");
+    expect(publicBooking?.owns).toContain("createPublicBookingMachine");
+    expect(publicBooking?.owns).not.toContain("PublicBookingFlowView");
+    expect(publicBooking?.owns).not.toContain("LivePublicBookingView");
+    expect(publicBooking?.tags).toEqual(expect.arrayContaining(["deusmachina", "async"]));
+  });
 });

@@ -13,7 +13,9 @@ import { ProviderBookingsView } from "./bookings/ProviderBookingsView";
 import { BookingDebugPanel } from "./bookings/BookingDebugPanel";
 import { BookingReschedulePanel } from "./confirmation/BookingReschedulePanel";
 import { ConfirmationView } from "./confirmation/ConfirmationView";
-import { BookingCalendarRegionView, SchedulingBookingPageProvider, SlotPickerView } from "./views";
+import { controlledSchedulingError } from "./shared/liveContext";
+import { BookingCalendarRegionView } from "./publicBooking/BookingViews";
+import { SchedulingBookingPageProvider } from "./publicBooking/BookingPageContext";
 
 const slot = {
   providerId: "p",
@@ -115,19 +117,6 @@ describe("scheduling frontend module", () => {
     const html = renderToStaticMarkup(createElement(AdminModeBanner, { errorMessage: "unsafe_admin_disabled" }));
     expect(html).toContain("Admin gate blocked");
     expect(html).toContain("Restart the backend with LEVIATHAN_ALLOW_UNSAFE_ADMIN=true");
-  });
-
-  it("public slot display includes timezone and service cards", () => {
-    const html = renderToStaticMarkup(
-      createElement(SlotPickerView as any, {
-        slots: [slot],
-        services: [{ id: { value: "svc" }, providerId: { value: "p" }, name: "Consult", durationMinutes: 30, assignedResourceIds: [], isPublic: true }],
-        nodeData: { dispatch: vi.fn() },
-      }),
-    );
-    expect(html).toContain("provider timezone America/Los_Angeles");
-    expect(html).toContain("shown in America/New_York");
-    expect(html).toContain("Consult");
   });
 
   it("confirmation view includes booking id/timezone/ICS link when appropriate", () => {
@@ -236,8 +225,7 @@ describe("scheduling frontend module", () => {
   });
 
   it("renders useful scheduling errors", () => {
-    const html = renderToStaticMarkup(createElement(SlotPickerView as any, { errorMessage: "payment_required" }));
-    expect(html).toContain("Payment is required before confirmation");
+    expect(controlledSchedulingError("payment_required")).toContain("Payment is required before confirmation");
   });
 
   it("provider setup fixture result card renders generated booking link and summary", () => {

@@ -18,10 +18,8 @@ import {
   BookingMainHeaderView,
   BookingSlotsRegionView,
   BookingSummaryPanelView,
-  SchedulingHeroView,
-  SchedulingMainView,
-  SchedulingSidebarView,
-} from "../apps/scheduling/views";
+} from "../apps/scheduling/publicBooking/BookingViews";
+import { SchedulingHeroView, SchedulingMainView, SchedulingSidebarView } from "../apps/scheduling/views";
 
 type SlotProps = MachinaSlotProps<unknown, { dispatch: DispatchFn }>;
 const dispatchOf = (props: SlotProps) => props.nodeData?.dispatch;

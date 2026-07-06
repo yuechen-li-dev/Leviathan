@@ -5,7 +5,7 @@ import { attachPopstateRouteAdapter, initialRouteFromLocation, mirrorRouteToHist
 import { buildAppsLayout, buildRustSimulatorLayout } from "./layouts";
 import { buildSchedulingLayout } from "../apps/scheduling/layouts";
 import { resolveSchedulingFixtureScenario } from "../apps/scheduling/fixtures";
-import { SchedulingBookingPageProvider } from "../apps/scheduling/views";
+import { SchedulingBookingPageProvider } from "../apps/scheduling/publicBooking/BookingPageContext";
 import type { DispatchFn, LeviathanDispatch, ShellState } from "./types";
 import { commandForEvent, runShellCommand } from "./shellCommands";
 import { reduceShellState } from "./shellDispatch";
