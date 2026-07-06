@@ -26,16 +26,24 @@ describe("SchedulingAtlas", () => {
     expect(setup?.tags).toContain("deusmachina");
   });
 
-  it("the bookings section (M1's deliverable) reflects the deferred M2.5 orchestration port", () => {
+  it("the bookings section reflects the M2.5 async task port, not a deferred TODO anymore", () => {
     const bookings = SchedulingAtlas.sections.find((s) => s.key === "bookings");
     expect(bookings?.owns).toContain("LiveProviderBookingsView");
-    expect(bookings?.notes).toContain("M2.5");
+    expect(bookings?.owns).toContain("cancelBookingTask");
+    expect(bookings?.tags).toContain("async");
   });
 
   it("the confirmation section (M2's deliverable) reflects the real DeusMachina + async port", () => {
     const confirmation = SchedulingAtlas.sections.find((s) => s.key === "confirmation");
     expect(confirmation?.owns).toContain("createRescheduleMachine");
     expect(confirmation?.owns).toContain("confirmReplacementTask");
+    expect(confirmation?.owns).toContain("getBookingForConfirmationTask");
     expect(confirmation?.tags).toEqual(expect.arrayContaining(["deusmachina", "async"]));
+  });
+
+  it("the setup section reflects M2.5's async task port on top of M0's Deus port", () => {
+    const setup = SchedulingAtlas.sections.find((s) => s.key === "setup");
+    expect(setup?.owns).toContain("createProviderTask");
+    expect(setup?.tags).toEqual(expect.arrayContaining(["deusmachina", "async"]));
   });
 });

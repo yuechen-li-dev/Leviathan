@@ -1,34 +1,19 @@
 // Provider bookings list (live backend mode). Extracted from views.tsx
-// (M1). Structural move + relocate only - the refresh/select-detail/cancel
-// orchestration stays plain useState for now. That orchestration currently
-// shares one generic `busy` boolean across three distinct async operations,
-// which is a real DeusMachina candidate, but it's deliberately deferred to
-// milestone M2.5 rather than folded into this move.
+// (M1). M2.5: refresh/select-detail/cancel now each run through their own
+// AsyncTaskController instead of one shared `busy` boolean. This closes
+// the real gap flagged in M1/M2: selecting booking A then quickly
+// selecting booking B now actually cancels A's in-flight detail fetch
+// (AsyncTaskController's own "starting a new run cancels the previous"
+// behavior), so a slow response for A can no longer land after B is
+// already selected and show wrong detail data.
 //
-// TODO(async-adoption): refresh/select-detail/cancel are exactly the shape
-// machinalayout/async + useAsyncTask target (M2 adopted both) - would also
-// close a real gap here: selecting booking A then quickly selecting
-// booking B has no stale-completion protection today, so a slow response
-// for A can land after B is already selected and show wrong detail data.
-// Tracked as M2.5, not fixed here.
-//
-// BookingReschedulePanel now imports cleanly from ../confirmation (M2
-// extracted it there). Until M2 landed, this had a deliberate temporary
-// import from ../views instead, which created a real (if safe) circular
-// import between this file and views.tsx - resolved now that both
-// bookings/ and confirmation/ import BookingReschedulePanel from its own
-// module rather than one importing it through the other.
+// BookingReschedulePanel imports cleanly from ../confirmation (M2
+// extracted it there).
 
 import { useEffect, useState } from "react";
+import { matchKind } from "machinalayout/match";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  cancelBooking,
-  getBookingAudit,
-  getBookingLifecycle,
-  getBookingNotifications,
-  listProviderBookings,
-} from "../api";
 import { AdminModeBanner } from "../shared/AdminGateBanner";
 import { controlledSchedulingError, isUnsafeAdminError, loadLiveContext, queryValue, saveLiveContext } from "../shared/liveContext";
 import { StatusChip } from "../shared/StatusChip";
@@ -36,6 +21,13 @@ import { chipToneForValue, formatDateTimeRange, formatTimestamp, notificationSum
 import type { Booking, BookingAuditEvent, ScheduledNotification, SchedulingLifecycleSummary } from "../types";
 import { BookingDebugPanel } from "./BookingDebugPanel";
 import { BookingReschedulePanel } from "../confirmation/BookingReschedulePanel";
+import { useAsyncTask } from "../../../machina/useAsyncTask";
+import { cancelBookingTask, listBookingsTask, loadBookingDetailTask } from "./bookingsListTasks";
+
+function taskErrorMessage(error: unknown): string | undefined {
+  if (error === undefined) return undefined;
+  return error instanceof Error ? error.message : String(error);
+}
 
 function LiveProviderBookingsView() {
   const liveContext = loadLiveContext();
@@ -44,63 +36,79 @@ function LiveProviderBookingsView() {
   const [auditEvents, setAuditEvents] = useState<BookingAuditEvent[]>([]);
   const [lifecycle, setLifecycle] = useState<SchedulingLifecycleSummary>();
   const [notifications, setNotifications] = useState<ScheduledNotification[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string>();
-  const [busy, setBusy] = useState(false);
+  const [staticErrorMessage, setStaticErrorMessage] = useState<string>();
   const providerId = queryValue("providerId") ?? liveContext.providerId;
   const requestedBookingId = queryValue("bookingId") ?? liveContext.bookingId;
 
+  const listTask = useAsyncTask(listBookingsTask);
+  const detailTask = useAsyncTask(loadBookingDetailTask);
+  const cancelTask = useAsyncTask(cancelBookingTask);
+
+  const busy =
+    listTask.snapshot.board.status === "running" ||
+    detailTask.snapshot.board.status === "running" ||
+    cancelTask.snapshot.board.status === "running";
+  const errorMessage =
+    staticErrorMessage ??
+    taskErrorMessage(listTask.snapshot.board.error) ??
+    taskErrorMessage(detailTask.snapshot.board.error) ??
+    taskErrorMessage(cancelTask.snapshot.board.error);
+
+  async function loadBookingDetail(currentProviderId: string, currentBookingId: string) {
+    const result = await detailTask.run({ providerId: currentProviderId, bookingId: currentBookingId });
+    matchKind(result, {
+      ok: (r) => {
+        setAuditEvents(r.value.auditEvents);
+        setLifecycle(r.value.lifecycle);
+        setNotifications(r.value.notifications);
+      },
+      err: () => {},
+      cancelled: () => {},
+      timeout: () => {},
+    });
+  }
+
+  async function refreshBookings(currentProviderId: string, preferredBookingId?: string) {
+    setStaticErrorMessage(undefined);
+    const result = await listTask.run({ providerId: currentProviderId });
+    await matchKind(result, {
+      ok: async (r) => {
+        setBookings(r.value);
+        const nextSelected = r.value.find((booking) => booking.id.value === preferredBookingId) ?? r.value.at(-1) ?? null;
+        setSelectedBooking(nextSelected);
+        if (nextSelected) {
+          await loadBookingDetail(currentProviderId, nextSelected.id.value);
+          saveLiveContext({ providerId: currentProviderId, bookingId: nextSelected.id.value });
+        }
+      },
+      err: async () => {},
+      cancelled: async () => {},
+      timeout: async () => {},
+    });
+  }
+
   useEffect(() => {
     if (!providerId) {
-      setErrorMessage("No live provider is available yet. Create one from provider setup first.");
+      setStaticErrorMessage("No live provider is available yet. Create one from provider setup first.");
       return;
     }
     void refreshBookings(providerId, requestedBookingId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerId, requestedBookingId]);
-
-  async function refreshBookings(currentProviderId: string, preferredBookingId?: string) {
-    try {
-      setBusy(true);
-      setErrorMessage(undefined);
-      const nextBookings = await listProviderBookings(currentProviderId);
-      setBookings(nextBookings);
-      const nextSelected = nextBookings.find((booking) => booking.id.value === preferredBookingId) ?? nextBookings.at(-1) ?? null;
-      setSelectedBooking(nextSelected);
-      if (nextSelected) {
-        await loadBookingDetail(currentProviderId, nextSelected.id.value);
-        saveLiveContext({ providerId: currentProviderId, bookingId: nextSelected.id.value });
-      }
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function loadBookingDetail(currentProviderId: string, currentBookingId: string) {
-    const [audit, liveLifecycle, liveNotifications] = await Promise.all([
-      getBookingAudit(currentBookingId, currentProviderId),
-      getBookingLifecycle(currentBookingId),
-      getBookingNotifications(currentBookingId),
-    ]);
-    setAuditEvents(audit);
-    setLifecycle(liveLifecycle);
-    setNotifications(liveNotifications);
-  }
 
   async function cancelSelectedBooking() {
     if (!selectedBooking) return;
-    try {
-      setBusy(true);
-      setErrorMessage(undefined);
-      const result = await cancelBooking(selectedBooking.id.value);
-      setSelectedBooking(result.booking);
-      setLifecycle(result.lifecycle);
-      await refreshBookings(providerId!, result.booking.id.value);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
+    const result = await cancelTask.run({ bookingId: selectedBooking.id.value });
+    await matchKind(result, {
+      ok: async (r) => {
+        setSelectedBooking(r.value.booking);
+        setLifecycle(r.value.lifecycle);
+        await refreshBookings(providerId!, r.value.booking.id.value);
+      },
+      err: async () => {},
+      cancelled: async () => {},
+      timeout: async () => {},
+    });
   }
 
   return (
@@ -113,7 +121,7 @@ function LiveProviderBookingsView() {
           </div>
           <div className="scheduling-chip-row">
             <button data-testid="bookings-refresh" disabled={busy || !providerId} onClick={() => void refreshBookings(providerId!, selectedBooking?.id.value)}>
-              {busy ? "Refreshing…" : "Refresh"}
+              {listTask.snapshot.board.status === "running" ? "Refreshing…" : "Refresh"}
             </button>
           </div>
         </div>

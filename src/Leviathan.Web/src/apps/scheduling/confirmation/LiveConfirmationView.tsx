@@ -1,38 +1,49 @@
 // Confirmation surface, live backend mode. Extracted from views.tsx (M2).
-// Zero behavior change - this view's own booking-fetch-on-mount stays
-// plain useState for now; see the M2.5-adjacent TODO in this file for why
-// it's a reasonable future useAsyncTask candidate but out of scope here.
+// M2.5: booking-fetch-on-mount now runs through useAsyncTask, closing the
+// TODO M2 left here - gets stale-completion protection for free if the
+// route's bookingId ever changes while a fetch is in flight.
 
 import { useEffect, useState } from "react";
+import { matchKind } from "machinalayout/match";
 import { Button } from "@/components/ui/button";
-import { getBooking } from "../api";
 import { bookingIdFromPath, controlledSchedulingError, linkWithCurrentQuery, loadLiveContext, providerSlugFromPath, saveLiveContext } from "../shared/liveContext";
 import type { Booking } from "../types";
 import { BookingReschedulePanel } from "./BookingReschedulePanel";
 import { ConfirmationView } from "./ConfirmationView";
+import { getBookingForConfirmationTask } from "./confirmationTasks";
+import { useAsyncTask } from "../../../machina/useAsyncTask";
+
+function taskErrorMessage(error: unknown): string | undefined {
+  if (error === undefined) return undefined;
+  return error instanceof Error ? error.message : String(error);
+}
 
 function LiveConfirmationView() {
-  const [booking, setBooking] = useState<Booking | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string>();
   const liveContext = loadLiveContext();
+  const bookingTask = useAsyncTask(getBookingForConfirmationTask);
+  const board = bookingTask.snapshot.board;
+  // The fetch owns the booking until something updates it locally (e.g. a
+  // reschedule confirming a replacement, via onOriginalBookingUpdated) -
+  // once that happens, the override takes precedence over the fetch's own
+  // result, same as the old component's single `setBooking` did double duty
+  // for both cases.
+  const [bookingOverride, setBookingOverride] = useState<Booking | null>(null);
+  const booking = bookingOverride ?? (board.status === "succeeded" ? board.result : null);
+  const missingBookingId = !bookingIdFromPath() && !liveContext.bookingId;
+  const errorMessage = missingBookingId ? "Booking id is missing from the confirmation route." : taskErrorMessage(board.error);
 
-  // TODO(async-adoption): plain useState/useEffect fetch-on-mount, same
-  // shape as the pre-M2 pattern. Genuine useAsyncTask candidate (gets
-  // stale-completion protection for free if the route's bookingId ever
-  // changes while a fetch is in flight), deliberately out of scope for M2 -
-  // this view's fetch isn't the reschedule flow M2 was scoped to port.
   useEffect(() => {
     const bookingId = bookingIdFromPath() ?? liveContext.bookingId;
-    if (!bookingId) {
-      setErrorMessage("Booking id is missing from the confirmation route.");
-      return;
-    }
-    void getBooking(bookingId)
-      .then((value) => {
-        setBooking(value);
-        saveLiveContext({ bookingId: value.id.value, providerId: value.providerId?.value });
-      })
-      .catch((error) => setErrorMessage(error instanceof Error ? error.message : String(error)));
+    if (!bookingId) return;
+    void bookingTask.run({ bookingId }).then((result) =>
+      matchKind(result, {
+        ok: (r) => saveLiveContext({ bookingId: r.value.id.value, providerId: r.value.providerId?.value }),
+        err: () => {},
+        cancelled: () => {},
+        timeout: () => {},
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveContext.bookingId]);
 
   if (!booking) {
@@ -61,7 +72,7 @@ function LiveConfirmationView() {
           <BookingReschedulePanel
             actor="local-dev-admin"
             booking={booking}
-            onOriginalBookingUpdated={setBooking}
+            onOriginalBookingUpdated={setBookingOverride}
             onReplacementConfirmed={(nextBooking) => {
               saveLiveContext({
                 providerId: nextBooking.providerId?.value ?? booking.providerId?.value ?? liveContext.providerId,

@@ -11,15 +11,9 @@
 
 import { useEffect, useState } from "react";
 import { useDeusMachine } from "machinalayout/react";
+import { matchKind } from "machinalayout/match";
 import { Button } from "@/components/ui/button";
-import {
-  assignResourceToService,
-  createAvailabilityRule,
-  createProvider,
-  createResource,
-  createService,
-  getLocalDevContext,
-} from "../api";
+import { getLocalDevContext } from "../api";
 import {
   defaultProviderSlug,
   linkWithCurrentQuery,
@@ -33,8 +27,14 @@ import type { LocalDevPlatformContext } from "../types";
 import { createDefaultSetupDraft, setupEntitiesFromValues } from "./derive";
 import { ProviderSetupFlow } from "./ProviderSetupFlow";
 import { busyLabel, createSetupMachine, phaseFromStatePath, stepForPhase, type SetupBoard, type SetupEvent } from "./setupMachine";
+import { createAvailabilityTask, createProviderTask, createResourceTask, createServiceTask } from "./setupTasks";
+import { useAsyncTask } from "../../../machina/useAsyncTask";
 
 const setupMachine = createSetupMachine();
+
+function taskErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 function initialSetupBoard(): SetupBoard {
   const liveContext = loadLiveContext();
@@ -100,91 +100,121 @@ export function LiveProviderSetupView() {
     }
   }
 
-  // TODO(async-adoption): each create* call inside runStep does its own
-  // manual try/catch/finally around a direct api.ts call, dispatching a
-  // *Created/*Failed event by hand. Built before machinalayout/async and
-  // useAsyncTask existed (M0 predates M2); would now be four
-  // AsyncTaskControllers instead, each result handled via matchKind - same
-  // pattern M2 used for the reschedule steps. Not fixed here since the
-  // current pattern is tested and working; a real cleanup opportunity, not
-  // a correctness problem the way bookings-list's staleness gap is (see
-  // M2.5).
+  const createProviderTaskState = useAsyncTask(createProviderTask);
+  const createResourceTaskState = useAsyncTask(createResourceTask);
+  const createServiceTaskState = useAsyncTask(createServiceTask);
+  const createAvailabilityTaskState = useAsyncTask(createAvailabilityTask);
+
+  // TODO(async-adoption): closed - each create* call now runs through its
+  // own AsyncTaskController instead of a manual try/catch/finally. The Deus
+  // stage machine's *Pending states are unchanged on purpose: they gate
+  // which step is eligible next (createResource is only eligible from
+  // idle, specifically preventing it from firing while createProvider is
+  // still in flight), which is a different job than AsyncTaskController's
+  // per-call lifecycle tracking - restructuring the machine itself wasn't
+  // part of what this TODO asked for.
   async function runStep(step: "provider" | "resource" | "service" | "availability") {
     const gate = deus.dispatch(createEventForStep[step]);
     // The machine's own guard is the source of truth for "is this step
     // actually runnable right now" - if it didn't select a transition
     // (prerequisite missing, or already created), don't make the network
-    // call at all. This is the same check the old code expressed as
-    // `if (!providerId) throw new Error(...)` deep inside the try/catch,
-    // just moved to before the request fires instead of after.
+    // call at all.
     if (!gate.trace.selectedTransition) return;
 
     const liveContext = loadLiveContext();
-    try {
-      if (step === "provider") {
-        const created = await createProvider({
-          slug: board.draft.provider.slug,
-          displayName: board.draft.provider.displayName,
-          timeZoneId: board.draft.provider.timeZoneId,
-          contactEmail: board.draft.provider.contactEmail,
-          publicDescription: board.draft.provider.publicDescription,
-        });
-        saveLiveContext({
-          providerId: created.id.value,
-          providerSlug: created.slug,
-          providerName: created.displayName,
-          providerTimeZone: created.timeZoneId,
-        });
-        dispatch({ type: "providerCreated", provider: created });
-        return;
-      }
 
-      const providerId = board.provider?.id.value ?? liveContext.providerId;
-      if (!providerId) throw new Error("Create provider first.");
+    if (step === "provider") {
+      const result = await createProviderTaskState.run({
+        slug: board.draft.provider.slug,
+        displayName: board.draft.provider.displayName,
+        timeZoneId: board.draft.provider.timeZoneId,
+        contactEmail: board.draft.provider.contactEmail,
+        publicDescription: board.draft.provider.publicDescription,
+      });
+      matchKind(result, {
+        ok: (r) => {
+          saveLiveContext({
+            providerId: r.value.id.value,
+            providerSlug: r.value.slug,
+            providerName: r.value.displayName,
+            providerTimeZone: r.value.timeZoneId,
+          });
+          dispatch({ type: "providerCreated", provider: r.value });
+        },
+        err: (r) => dispatch(failedEvent(step, taskErrorMessage(r.error))),
+        cancelled: () => {},
+        timeout: () => {},
+      });
+      return;
+    }
 
-      if (step === "resource") {
-        const created = await createResource({
-          providerId,
-          displayName: board.draft.resource.displayName,
-          resourceType: board.draft.resource.resourceType,
-          timeZoneId: board.draft.resource.timeZoneId,
-        });
-        saveLiveContext({ providerId, resourceId: created.id.value });
-        dispatch({ type: "resourceCreated", resource: created });
-        return;
-      }
+    const providerId = board.provider?.id.value ?? liveContext.providerId;
+    if (!providerId) {
+      dispatch(failedEvent(step, "Create provider first."));
+      return;
+    }
 
-      const resourceId = board.resource?.id.value ?? liveContext.resourceId;
-      if (!resourceId) throw new Error("Create resource first.");
+    if (step === "resource") {
+      const result = await createResourceTaskState.run({
+        providerId,
+        displayName: board.draft.resource.displayName,
+        resourceType: board.draft.resource.resourceType,
+        timeZoneId: board.draft.resource.timeZoneId,
+      });
+      matchKind(result, {
+        ok: (r) => {
+          saveLiveContext({ providerId, resourceId: r.value.id.value });
+          dispatch({ type: "resourceCreated", resource: r.value });
+        },
+        err: (r) => dispatch(failedEvent(step, taskErrorMessage(r.error))),
+        cancelled: () => {},
+        timeout: () => {},
+      });
+      return;
+    }
 
-      if (step === "service") {
-        const created = await createService({
-          providerId,
-          name: board.draft.service.name,
-          description: board.draft.service.description,
-          durationMinutes: board.draft.service.durationMinutes,
-          paymentPolicy: livePaymentPolicy,
-          notificationPolicy: liveNotificationPolicy,
-        });
-        const assigned = await assignResourceToService(created.id.value, providerId, resourceId);
-        saveLiveContext({ providerId, resourceId, serviceId: assigned.id.value });
-        dispatch({ type: "serviceCreated", service: assigned });
-        return;
-      }
+    const resourceId = board.resource?.id.value ?? liveContext.resourceId;
+    if (!resourceId) {
+      dispatch(failedEvent(step, "Create resource first."));
+      return;
+    }
 
-      const created = await createAvailabilityRule({
+    if (step === "service") {
+      const result = await createServiceTaskState.run({
         providerId,
         resourceId,
-        timeZoneId: board.draft.availability.timeZoneId,
-        daysOfWeek: board.draft.availability.daysOfWeek,
-        localStartTime: board.draft.availability.localStartTime,
-        localEndTime: board.draft.availability.localEndTime,
+        name: board.draft.service.name,
+        description: board.draft.service.description,
+        durationMinutes: board.draft.service.durationMinutes,
+        paymentPolicy: livePaymentPolicy,
+        notificationPolicy: liveNotificationPolicy,
       });
-      dispatch({ type: "availabilityCreated", rule: created });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      dispatch(failedEvent(step, message));
+      matchKind(result, {
+        ok: (r) => {
+          saveLiveContext({ providerId, resourceId, serviceId: r.value.id.value });
+          dispatch({ type: "serviceCreated", service: r.value });
+        },
+        err: (r) => dispatch(failedEvent(step, taskErrorMessage(r.error))),
+        cancelled: () => {},
+        timeout: () => {},
+      });
+      return;
     }
+
+    const result = await createAvailabilityTaskState.run({
+      providerId,
+      resourceId,
+      timeZoneId: board.draft.availability.timeZoneId,
+      daysOfWeek: board.draft.availability.daysOfWeek,
+      localStartTime: board.draft.availability.localStartTime,
+      localEndTime: board.draft.availability.localEndTime,
+    });
+    matchKind(result, {
+      ok: (r) => dispatch({ type: "availabilityCreated", rule: r.value }),
+      err: (r) => dispatch(failedEvent(step, taskErrorMessage(r.error))),
+      cancelled: () => {},
+      timeout: () => {},
+    });
   }
 
   async function copyPublicLink() {
