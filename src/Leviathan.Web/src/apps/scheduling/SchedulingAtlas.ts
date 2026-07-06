@@ -12,7 +12,7 @@ import { defineMachinaAtlas } from "machinalayout/atlas";
 export const SchedulingAtlas = defineMachinaAtlas({
   app: "Scheduling",
   notes:
-    "Second app on the Leviathan platform (Ariadne is first). M0 rewrote the provider setup wizard with a real DeusMachina-backed live orchestrator. M1 moved landing and the bookings list into their own directories (structural + dead-row cleanup only - the bookings list's live orchestration is deliberately deferred to M2.5, since it embeds BookingReschedulePanel and needs to know M2's reschedule board shape first). Public booking and confirmation surfaces are still inside views.tsx/layouts.ts pending M2-M3.",
+    "Second app on the Leviathan platform (Ariadne is first). M0 rewrote the provider setup wizard with a real DeusMachina-backed live orchestrator. M1 moved landing and the bookings list into their own directories (structural + dead-row cleanup only). M2 moved confirmation + reschedule together (they share a screen - reschedule is an action reachable from confirmation, not a separate flow) and gave reschedule a real DeusMachina port, now split across a stage machine (available/picker/replacement/result) plus five independent machinalayout/async task controllers for the network steps - a cleaner split than M0's setup port could manage, since machinalayout/async didn't exist yet when M0 was built. Public booking flow is the only surface still inside views.tsx/layouts.ts, pending M3 (deliberately last).",
   sections: [
     {
       key: "setup",
@@ -91,6 +91,17 @@ export const SchedulingAtlas = defineMachinaAtlas({
       tags: ["shared", "presentational", "m1"],
     },
     {
+      key: "shared-booking-status-summary",
+      name: "Compact booking status summary",
+      kind: "shared",
+      file: "shared/BookingStatusSummary.tsx",
+      owns: ["BookingStatusSummary"],
+      uses: ["shared-booking-meta-panels", "shared-status-chip"],
+      usedBy: ["confirmation", "public-booking"],
+      tags: ["shared", "presentational", "m2"],
+      notes: "Extracted in M2 - used by confirmation and the still-in-views.tsx public booking flow both.",
+    },
+    {
       key: "front-page",
       name: "Front page / landing",
       kind: "page",
@@ -120,12 +131,23 @@ export const SchedulingAtlas = defineMachinaAtlas({
       kind: "page",
       route: "/book/:providerSlug/confirmed/:bookingId",
       fixture: "booking-confirmation",
-      file: "views.tsx",
-      owns: ["ConfirmationView", "BookingReschedulePanel", "LiveConfirmationView"],
-      uses: ["shared/format", "shared/liveContext", "shared/AdminGateBanner"],
-      tags: ["scheduling", "confirmation", "reschedule", "not-yet-split"],
+      owns: [
+        "ConfirmationView",
+        "ConfirmationSurfaceView",
+        "LiveConfirmationView",
+        "BookingReschedulePanel",
+        "createRescheduleMachine",
+        "listReplacementSlotsTask",
+        "createReplacementHoldTask",
+        "submitReplacementIntakeTask",
+        "satisfyReplacementPaymentTask",
+        "confirmReplacementTask",
+      ],
+      uses: ["shared/format", "shared/liveContext", "shared/AdminGateBanner", "shared/StatusChip", "shared/BookingMetaPanels", "machina/useAsyncTask"],
+      usedBy: ["shared-shell", "bookings"],
+      tags: ["scheduling", "confirmation", "reschedule", "m2", "deusmachina", "async"],
       notes:
-        "Candidate for M2, combining confirmation + reschedule into one milestone since reschedule is an action reachable from the confirmation screen, not a separate flow - they should share one DeusMachina board. Also still has the same dead-absolute-row pattern layouts.ts's setup branch had before M0 (booking-status-hero/-details/-next-steps etc, never assigned a view); worth re-checking when this surface's turn comes.",
+        "M2 deliverable. Confirmation and reschedule moved together deliberately - reschedule is an action reachable from the confirmation screen (and from the bookings list - see bookings.notes), not a separate flow, so they share a directory even though BookingReschedulePanel is its own file. The reschedule stage machine (available/picker/replacement/result) governs macro stage only; each network step (list slots, create hold, submit intake, satisfy payment, confirm) runs through its own machinalayout/async AsyncTaskController via the new shared machina/useAsyncTask hook, which didn't exist before M2 built it (checked - genuinely missing upstream, unlike useDeusMachine). Fixture-mode rendering reads `stage` directly from the fixture prop rather than the machine's own graph state, since `createDeusSnapshot` always starts at `machine.initial` regardless of board data and `renderToStaticMarkup` never runs the effect that would otherwise sync it - board data is seeded correctly on first paint via `boardFromFixtureState` instead.",
     },
     {
       key: "bookings",
@@ -134,11 +156,11 @@ export const SchedulingAtlas = defineMachinaAtlas({
       route: "/apps/scheduling/bookings",
       fixture: "notification-summary",
       owns: ["ProviderBookingsView", "LiveProviderBookingsView", "BookingDebugPanel"],
-      uses: ["shared/format", "shared/liveContext", "shared/AdminGateBanner", "shared/StatusChip", "shared/BookingMetaPanels"],
+      uses: ["shared/format", "shared/liveContext", "shared/AdminGateBanner", "shared/StatusChip", "shared/BookingMetaPanels", "confirmation"],
       usedBy: ["shared-shell"],
       tags: ["scheduling", "bookings", "m1"],
       notes:
-        "M1 deliverable: structural move + dead-row cleanup only (six dead rows removed from layouts.ts's bookings branch, same pattern M0 found in setup). Live orchestration (refresh/select-detail/cancel, currently one undifferentiated `busy` boolean) is a real DeusMachina candidate but deliberately deferred to M2.5 - LiveProviderBookingsView embeds BookingReschedulePanel (still confirmation-territory, pending M2), so a temporary import from ../views is expected here until M2 extracts it.",
+        "M1 deliverable: structural move + dead-row cleanup only (six dead rows removed from layouts.ts's bookings branch, same pattern M0 found in setup). Live orchestration (refresh/select-detail/cancel, currently one undifferentiated `busy` boolean) is a real machinalayout/async candidate now that M2 built useAsyncTask - tracked as M2.5, not yet done. The temporary `../views` import for BookingReschedulePanel noted here before M2 is resolved: it now imports from ../confirmation/BookingReschedulePanel directly, same as the confirmation surface does.",
     },
     {
       key: "shared-shell",
@@ -147,7 +169,8 @@ export const SchedulingAtlas = defineMachinaAtlas({
       owns: ["buildSchedulingLayout", "SchedulingHeroView", "SchedulingMainView", "SchedulingSidebarView"],
       usedBy: ["setup", "front-page", "public-booking", "confirmation", "bookings"],
       tags: ["shared", "layout", "shell"],
-      notes: "layouts.ts's setup-surface branch was rewritten in M0 using machinalayout/machina (M.vstack/M.node) in place of ~40 lines of hand-computed absolute positions for rows that were never actually rendered (no view assigned). Other surfaces' branches in this same file likely have the same dead-row pattern; not yet audited.",
+      notes:
+        "layouts.ts's setup (M0), bookings (M1), and confirmation (M2) branches were all rewritten with machinalayout/machina (M.vstack/M.node), each removing a dead-row pattern (~15-40 lines of hand-computed absolute positions for rows that were never actually rendered - no view assigned). The public-booking branch (still in views.tsx, pending M3) hasn't been audited for the same pattern yet.",
     },
   ],
 });

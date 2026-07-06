@@ -11,13 +11,9 @@ import { ProviderSetupView } from "./setup/ProviderSetupFlow";
 import { SchedulingHomeView } from "./landing/SchedulingHomeView";
 import { ProviderBookingsView } from "./bookings/ProviderBookingsView";
 import { BookingDebugPanel } from "./bookings/BookingDebugPanel";
-import {
-  BookingCalendarRegionView,
-  BookingReschedulePanel,
-  ConfirmationView,
-  SchedulingBookingPageProvider,
-  SlotPickerView,
-} from "./views";
+import { BookingReschedulePanel } from "./confirmation/BookingReschedulePanel";
+import { ConfirmationView } from "./confirmation/ConfirmationView";
+import { BookingCalendarRegionView, SchedulingBookingPageProvider, SlotPickerView } from "./views";
 
 const slot = {
   providerId: "p",

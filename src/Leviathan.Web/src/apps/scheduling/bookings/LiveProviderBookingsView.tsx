@@ -3,14 +3,21 @@
 // orchestration stays plain useState for now. That orchestration currently
 // shares one generic `busy` boolean across three distinct async operations,
 // which is a real DeusMachina candidate, but it's deliberately deferred to
-// milestone M2.5 rather than folded into this move: it directly embeds
-// BookingReschedulePanel (still confirmation-territory code, pending its
-// own DeusMachina port in M2), so this milestone's board design needs to
-// know M2's board shape first rather than guessing at the boundary twice.
+// milestone M2.5 rather than folded into this move.
 //
-// BookingReschedulePanel import below is a deliberate temporary exception
-// to "don't import from views.tsx" - it still lives there pending M2's
-// extraction, and re-exports back out through views.tsx once that lands.
+// TODO(async-adoption): refresh/select-detail/cancel are exactly the shape
+// machinalayout/async + useAsyncTask target (M2 adopted both) - would also
+// close a real gap here: selecting booking A then quickly selecting
+// booking B has no stale-completion protection today, so a slow response
+// for A can land after B is already selected and show wrong detail data.
+// Tracked as M2.5, not fixed here.
+//
+// BookingReschedulePanel now imports cleanly from ../confirmation (M2
+// extracted it there). Until M2 landed, this had a deliberate temporary
+// import from ../views instead, which created a real (if safe) circular
+// import between this file and views.tsx - resolved now that both
+// bookings/ and confirmation/ import BookingReschedulePanel from its own
+// module rather than one importing it through the other.
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -28,7 +35,7 @@ import { StatusChip } from "../shared/StatusChip";
 import { chipToneForValue, formatDateTimeRange, formatTimestamp, notificationSummaryLabel, paymentSummaryLabel, paymentToneValue, statusLabel } from "../shared/format";
 import type { Booking, BookingAuditEvent, ScheduledNotification, SchedulingLifecycleSummary } from "../types";
 import { BookingDebugPanel } from "./BookingDebugPanel";
-import { BookingReschedulePanel } from "../views";
+import { BookingReschedulePanel } from "../confirmation/BookingReschedulePanel";
 
 function LiveProviderBookingsView() {
   const liveContext = loadLiveContext();

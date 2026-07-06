@@ -11,6 +11,7 @@ describe("SchedulingAtlas", () => {
       "shared-admin-gate-banner",
       "shared-status-chip",
       "shared-booking-meta-panels",
+      "shared-booking-status-summary",
       "front-page",
       "public-booking",
       "confirmation",
@@ -29,5 +30,12 @@ describe("SchedulingAtlas", () => {
     const bookings = SchedulingAtlas.sections.find((s) => s.key === "bookings");
     expect(bookings?.owns).toContain("LiveProviderBookingsView");
     expect(bookings?.notes).toContain("M2.5");
+  });
+
+  it("the confirmation section (M2's deliverable) reflects the real DeusMachina + async port", () => {
+    const confirmation = SchedulingAtlas.sections.find((s) => s.key === "confirmation");
+    expect(confirmation?.owns).toContain("createRescheduleMachine");
+    expect(confirmation?.owns).toContain("confirmReplacementTask");
+    expect(confirmation?.tags).toEqual(expect.arrayContaining(["deusmachina", "async"]));
   });
 });

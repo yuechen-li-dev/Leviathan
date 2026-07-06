@@ -100,6 +100,15 @@ export function LiveProviderSetupView() {
     }
   }
 
+  // TODO(async-adoption): each create* call inside runStep does its own
+  // manual try/catch/finally around a direct api.ts call, dispatching a
+  // *Created/*Failed event by hand. Built before machinalayout/async and
+  // useAsyncTask existed (M0 predates M2); would now be four
+  // AsyncTaskControllers instead, each result handled via matchKind - same
+  // pattern M2 used for the reschedule steps. Not fixed here since the
+  // current pattern is tested and working; a real cleanup opportunity, not
+  // a correctness problem the way bookings-list's staleness gap is (see
+  // M2.5).
   async function runStep(step: "provider" | "resource" | "service" | "availability") {
     const gate = deus.dispatch(createEventForStep[step]);
     // The machine's own guard is the source of truth for "is this step

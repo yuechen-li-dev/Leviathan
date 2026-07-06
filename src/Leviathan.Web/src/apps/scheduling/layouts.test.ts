@@ -180,13 +180,19 @@ describe("scheduling layout geometry", () => {
     expect(() => resolveLayoutRows(buildSchedulingLayout(rootRect, bookingScenario, false).rows, rootRect)).not.toThrow();
   });
 
-  it("adds explicit Machina booking status regions for confirmation surfaces", () => {
+  it("resolves the confirmation surface through a single rendered slot (M2: dead sub-rows removed)", () => {
     const rootRect = { x: 0, y: 0, width: 1440, height: 1024 };
     const { rows } = buildSchedulingLayout(rootRect, confirmationScenario, false);
 
-    expect(rows.map((row) => row.id)).toEqual(
+    expect(rows.map((row) => row.id)).toEqual(expect.arrayContaining(["scheduling-main", "booking-status-root"]));
+    // M2 finding: same pattern M0/M1 already found (setup, then bookings) -
+    // booking-status-hero/-details/-next-steps/-actions/-lifecycle and
+    // booking-reschedule-root/-current/-picker/-replacement/-actions/
+    // -result were eleven rows of computed geometry, never assigned a
+    // `view`. ConfirmationView + BookingReschedulePanel render as one
+    // Tailwind-laid-out tree inside the single "schedulingMain" slot.
+    expect(rows.map((row) => row.id)).not.toEqual(
       expect.arrayContaining([
-        "booking-status-root",
         "booking-status-hero",
         "booking-status-details",
         "booking-status-next-steps",
@@ -200,6 +206,9 @@ describe("scheduling layout geometry", () => {
         "booking-status-lifecycle",
       ]),
     );
+    const root = rows.find((row) => row.id === "booking-status-root");
+    expect(root?.view).toBe("schedulingMain");
+    expect(root?.frame).toMatchObject({ kind: "fixed" });
     expect(() => resolveLayoutRows(rows, rootRect)).not.toThrow();
   });
 
