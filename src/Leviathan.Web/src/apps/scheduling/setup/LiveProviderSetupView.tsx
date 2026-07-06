@@ -12,6 +12,8 @@
 import { useEffect, useState } from "react";
 import { useDeusMachine } from "machinalayout/react";
 import { matchKind } from "machinalayout/match";
+import { Command } from "machinalayout/command";
+import { Table } from "machinalayout/table";
 import { Button } from "@/components/ui/button";
 import { getLocalDevContext } from "../api";
 import {
@@ -26,7 +28,7 @@ import { browserTimeZone } from "../shared/format";
 import type { LocalDevPlatformContext } from "../types";
 import { createDefaultSetupDraft, setupEntitiesFromValues } from "./derive";
 import { ProviderSetupFlow } from "./ProviderSetupFlow";
-import { busyLabel, createSetupMachine, phaseFromStatePath, stepForPhase, type SetupBoard, type SetupEvent } from "./setupMachine";
+import { createSetupMachine, phaseFromStatePath, stepForPhase, type SetupBoard, type SetupEvent } from "./setupMachine";
 import { createAvailabilityTask, createProviderTask, createResourceTask, createServiceTask } from "./setupTasks";
 import { useAsyncTask } from "../../../machina/useAsyncTask";
 
@@ -229,30 +231,53 @@ export function LiveProviderSetupView() {
     }
   }
 
-  const busyStepLabel = busyLabel(phase);
   const currentBusyStep = stepForPhase(phase);
+
+  const setupCommandsTable = Table.defineWithSchema({
+    id: "setupCommands",
+    schema: Command.commandSchema(),
+    columns: {
+      command: ["provider", "resource", "service", "availability"],
+      label: ["Create provider", "Create resource", "Create service", "Create availability"],
+      busyLabel: ["Creating provider…", "Creating resource…", "Creating service…", "Creating availability…"],
+      doneLabel: ["Provider created", "Resource created", "Service created", "Availability created"],
+      testId: ["setup-create-provider", "setup-create-resource", "setup-create-service", "setup-create-availability"],
+      disabled: [
+        !!currentBusyStep || !!board.provider,
+        !!currentBusyStep || !board.provider || !!board.resource,
+        !!currentBusyStep || !board.resource || !!board.service,
+        !!currentBusyStep || !board.service || !!board.availabilityRule,
+      ],
+      busy: [currentBusyStep === "provider", currentBusyStep === "resource", currentBusyStep === "service", currentBusyStep === "availability"],
+      done: [!!board.provider, !!board.resource, !!board.service, !!board.availabilityRule],
+      description: [undefined, undefined, undefined, undefined],
+      variant: [undefined, undefined, undefined, undefined],
+    },
+  });
+  const setupCommands = Command.commandsFromTable(setupCommandsTable);
+  const commandById = Object.fromEntries(setupCommands.map((c) => [c.command, c]));
 
   return (
     <ProviderSetupFlow
       actionButtons={{
         provider: (
-          <Button data-testid="setup-create-provider" disabled={!!currentBusyStep || !!board.provider} onClick={() => void runStep("provider")} type="button">
-            {currentBusyStep === "provider" ? busyStepLabel : board.provider ? "Provider created" : "Create provider"}
+          <Button data-testid={commandById.provider.testId} disabled={commandById.provider.disabled} onClick={() => void runStep("provider")} type="button">
+            {Command.resolveCommandLabel(commandById.provider)}
           </Button>
         ),
         resource: (
-          <Button data-testid="setup-create-resource" disabled={!!currentBusyStep || !board.provider || !!board.resource} onClick={() => void runStep("resource")} type="button">
-            {currentBusyStep === "resource" ? busyStepLabel : board.resource ? "Resource created" : "Create resource"}
+          <Button data-testid={commandById.resource.testId} disabled={commandById.resource.disabled} onClick={() => void runStep("resource")} type="button">
+            {Command.resolveCommandLabel(commandById.resource)}
           </Button>
         ),
         service: (
-          <Button data-testid="setup-create-service" disabled={!!currentBusyStep || !board.resource || !!board.service} onClick={() => void runStep("service")} type="button">
-            {currentBusyStep === "service" ? busyStepLabel : board.service ? "Service created" : "Create service"}
+          <Button data-testid={commandById.service.testId} disabled={commandById.service.disabled} onClick={() => void runStep("service")} type="button">
+            {Command.resolveCommandLabel(commandById.service)}
           </Button>
         ),
         availability: (
-          <Button data-testid="setup-create-availability" disabled={!!currentBusyStep || !board.service || !!board.availabilityRule} onClick={() => void runStep("availability")} type="button">
-            {currentBusyStep === "availability" ? busyStepLabel : board.availabilityRule ? "Availability created" : "Create availability"}
+          <Button data-testid={commandById.availability.testId} disabled={commandById.availability.disabled} onClick={() => void runStep("availability")} type="button">
+            {Command.resolveCommandLabel(commandById.availability)}
           </Button>
         ),
       }}

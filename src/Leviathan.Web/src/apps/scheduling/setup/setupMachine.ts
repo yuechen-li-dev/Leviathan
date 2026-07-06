@@ -13,8 +13,9 @@
 // `*Created`/`*Failed` event. The machine decides; the actuator acts.
 
 import { M } from "machinalayout/machina";
-import type { DeusMachine, DeusStatePath } from "machinalayout/deus";
+import { pendingResultTransitionsFromTable, type DeusMachine, type DeusStatePath, type DeusTransitionRow } from "machinalayout/deus";
 import { matchEnum } from "machinalayout/match";
+import { Table } from "machinalayout/table";
 import type { AvailabilityRule, BookableResource, Provider, SchedulingService } from "../types";
 import type { SetupDraft } from "./types";
 import { weekdayOrder } from "./types";
@@ -54,6 +55,39 @@ const providerPending = ["setup", "providerPending"] as const;
 const resourcePending = ["setup", "resourcePending"] as const;
 const servicePending = ["setup", "servicePending"] as const;
 const availabilityPending = ["setup", "availabilityPending"] as const;
+
+// M3.5: resource/service/availability's success/failure transitions are
+// exactly the shape machinalayout/table's pending-result template targets -
+// board[successTarget] = event[successPayload], board.errorMessage cleared
+// on success or set to event.message on failure, back to idle either way.
+// `provider`'s success transition is deliberately NOT in this table: it
+// also propagates the new provider's timezone into the resource/
+// availability drafts, which the generic template can't express, so it
+// stays hand-written below rather than forcing a uniform table that would
+// either drop that behavior or need a bolted-on escape hatch.
+const pendingResultTable = Table.defineWithSchema({
+  id: "setupPendingResults",
+  schema: Table.schema({
+    entity: Table.string(),
+    pending: Table.unknown(),
+    successEvent: Table.string(),
+    failureEvent: Table.string(),
+    successTarget: Table.string(),
+    successPayload: Table.string(),
+    failurePayload: Table.string(),
+    to: Table.unknown(),
+  }),
+  columns: {
+    entity: ["resource", "service", "availability"],
+    pending: [resourcePending, servicePending, availabilityPending],
+    successEvent: ["resourceCreated", "serviceCreated", "availabilityCreated"],
+    failureEvent: ["resourceFailed", "serviceFailed", "availabilityFailed"],
+    successTarget: ["resource", "service", "availabilityRule"],
+    successPayload: ["resource", "service", "rule"],
+    failurePayload: ["message", "message", "message"],
+    to: [idle, idle, idle],
+  },
+});
 
 export function createSetupMachine(): DeusMachine<SetupBoard, SetupEvent> {
   return M.machine<SetupBoard, SetupEvent>({
@@ -151,6 +185,8 @@ export function createSetupMachine(): DeusMachine<SetupBoard, SetupEvent> {
 
       // Every pending state resolves back to idle on both success and
       // failure - matching the old `finally { setBusyStep(null) }`.
+      // Provider stays hand-written (see the pendingResultTable comment
+      // above); resource/service/availability come from the table.
       M.on("providerCreated", providerPending, idle, (b, e) => {
         if (e.type !== "providerCreated") return;
         b.provider = e.provider;
@@ -165,33 +201,7 @@ export function createSetupMachine(): DeusMachine<SetupBoard, SetupEvent> {
         if (e.type !== "providerFailed") return;
         b.errorMessage = e.message;
       }),
-      M.on("resourceCreated", resourcePending, idle, (b, e) => {
-        if (e.type !== "resourceCreated") return;
-        b.resource = e.resource;
-        b.errorMessage = undefined;
-      }),
-      M.on("resourceFailed", resourcePending, idle, (b, e) => {
-        if (e.type !== "resourceFailed") return;
-        b.errorMessage = e.message;
-      }),
-      M.on("serviceCreated", servicePending, idle, (b, e) => {
-        if (e.type !== "serviceCreated") return;
-        b.service = e.service;
-        b.errorMessage = undefined;
-      }),
-      M.on("serviceFailed", servicePending, idle, (b, e) => {
-        if (e.type !== "serviceFailed") return;
-        b.errorMessage = e.message;
-      }),
-      M.on("availabilityCreated", availabilityPending, idle, (b, e) => {
-        if (e.type !== "availabilityCreated") return;
-        b.availabilityRule = e.rule;
-        b.errorMessage = undefined;
-      }),
-      M.on("availabilityFailed", availabilityPending, idle, (b, e) => {
-        if (e.type !== "availabilityFailed") return;
-        b.errorMessage = e.message;
-      }),
+      ...(pendingResultTransitionsFromTable(pendingResultTable) as unknown as DeusTransitionRow<SetupBoard, SetupEvent>[]),
     ],
   });
 }

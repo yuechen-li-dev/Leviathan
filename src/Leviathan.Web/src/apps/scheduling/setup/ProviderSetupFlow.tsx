@@ -29,12 +29,117 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Form, type FormFieldRecord } from "machinalayout/form";
+import { Table } from "machinalayout/table";
 import { AdminModeBanner, OwnershipSummary } from "../shared/AdminGateBanner";
 import { browserTimeZone } from "../shared/format";
 import { controlledSchedulingError, isUnsafeAdminError } from "../shared/liveContext";
 import type { AvailabilityRule, BookableResource, LocalDevPlatformContext, Provider, SchedulingService } from "../types";
 import { availabilitySummary, createDefaultSetupDraft, setupEntitiesFromValues, setupLinkState, setupStepState } from "./derive";
 import { setupStepLabels, weekdayOrder, type SetupDraft, type SetupEntities } from "./types";
+
+/**
+ * M3.5: renders a Form.fieldsFromTable() result. Used for provider and
+ * resource's sections, which are fully uniform (plain text inputs/
+ * textareas, one shared disabled formula per section) - exactly the shape
+ * machinalayout/form's field table targets. Service's duration field
+ * (numeric coercion, type="number") and availability's start/end
+ * (type="time") have real HTML-attribute variation the generic
+ * FormFieldRecord shape doesn't model, so those two sections stay
+ * hand-written rather than force a table abstraction onto fields that
+ * genuinely aren't uniform.
+ */
+function renderFormField(field: FormFieldRecord, onChange: ((key: string, value: string) => void) | undefined) {
+  return (
+    <>
+      <Label htmlFor={field.inputId}>{field.label}</Label>
+      {field.control === "textarea" ? (
+        <Textarea disabled={field.disabled} id={field.inputId} onChange={(event) => onChange?.(field.changeKey, event.target.value)} value={String(field.value ?? "")} />
+      ) : (
+        <Input disabled={field.disabled} id={field.inputId} onChange={(event) => onChange?.(field.changeKey, event.target.value)} value={String(field.value ?? "")} />
+      )}
+    </>
+  );
+}
+
+function ProviderFieldsSection(props: {
+  draft: SetupDraft;
+  entities: SetupEntities;
+  onProviderFieldChange?: (field: keyof SetupDraft["provider"], value: string) => void;
+}) {
+  const disabled = !props.onProviderFieldChange || !!props.entities.provider;
+  const providerFieldsTable = Table.defineWithSchema({
+    id: "providerFields",
+    schema: Form.fieldSchema(),
+    columns: {
+      field: ["displayName", "slug", "timeZoneId", "contactEmail", "publicDescription"],
+      label: ["Provider name", "Public slug", "Timezone", "Contact email", "Short public description"],
+      control: ["input", "input", "input", "input", "textarea"],
+      inputId: ["setup-provider-name", "setup-provider-slug", "setup-provider-timezone", "setup-provider-email", "setup-provider-description"],
+      value: [props.draft.provider.displayName, props.draft.provider.slug, props.draft.provider.timeZoneId, props.draft.provider.contactEmail, props.draft.provider.publicDescription],
+      changeKey: ["displayName", "slug", "timeZoneId", "contactEmail", "publicDescription"],
+      disabled: [disabled, disabled, disabled, disabled, disabled],
+      placeholder: [undefined, undefined, undefined, undefined, undefined],
+      description: [undefined, undefined, undefined, undefined, undefined],
+      required: [true, true, true, false, false],
+      testId: ["setup-provider-name", "setup-provider-slug", "setup-provider-timezone", "setup-provider-email", "setup-provider-description"],
+    },
+  });
+  const fields = Form.fieldsFromTable(providerFieldsTable);
+  const onChange = (key: string, value: string) => props.onProviderFieldChange?.(key as keyof SetupDraft["provider"], value);
+
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {fields.slice(0, 4).map((field) => (
+          <div className="space-y-2" key={field.field}>
+            {renderFormField(field, onChange)}
+          </div>
+        ))}
+      </div>
+      {fields.slice(4).map((field) => (
+        <div className="space-y-2" key={field.field}>
+          {renderFormField(field, onChange)}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function ResourceFieldsSection(props: {
+  draft: SetupDraft;
+  entities: SetupEntities;
+  onResourceFieldChange?: (field: keyof SetupDraft["resource"], value: string) => void;
+}) {
+  const disabled = !props.onResourceFieldChange || !props.entities.provider || !!props.entities.resource;
+  const resourceFieldsTable = Table.defineWithSchema({
+    id: "resourceFields",
+    schema: Form.fieldSchema(),
+    columns: {
+      field: ["displayName", "resourceType", "timeZoneId"],
+      label: ["Resource name", "Resource type", "Timezone"],
+      control: ["input", "input", "input"],
+      inputId: ["setup-resource-name", "setup-resource-type", "setup-resource-timezone"],
+      value: [props.draft.resource.displayName, props.draft.resource.resourceType, props.draft.resource.timeZoneId],
+      changeKey: ["displayName", "resourceType", "timeZoneId"],
+      disabled: [disabled, disabled, disabled],
+      placeholder: [undefined, undefined, undefined],
+      description: [undefined, undefined, undefined],
+      required: [true, true, true],
+      testId: ["setup-resource-name", "setup-resource-type", "setup-resource-timezone"],
+    },
+  });
+  const fields = Form.fieldsFromTable(resourceFieldsTable);
+  const onChange = (key: string, value: string) => props.onResourceFieldChange?.(key as keyof SetupDraft["resource"], value);
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="space-y-2">{renderFormField(fields[0], onChange)}</div>
+      <div className="space-y-2">{renderFormField(fields[1], onChange)}</div>
+      <div className="space-y-2 sm:col-span-2">{renderFormField(fields[2], onChange)}</div>
+    </div>
+  );
+}
 
 function SetupProgressBadge({ state }: { state: "complete" | "current" | "upcoming" }) {
   return (
@@ -298,53 +403,7 @@ export function ProviderSetupFlow(props: {
             testId="provider-form-card"
             title="Provider"
           >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="setup-provider-name">Provider name</Label>
-                <Input
-                  disabled={!props.onProviderFieldChange || !!props.entities.provider}
-                  id="setup-provider-name"
-                  onChange={(event) => props.onProviderFieldChange?.("displayName", event.target.value)}
-                  value={props.draft.provider.displayName}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="setup-provider-slug">Public slug</Label>
-                <Input
-                  disabled={!props.onProviderFieldChange || !!props.entities.provider}
-                  id="setup-provider-slug"
-                  onChange={(event) => props.onProviderFieldChange?.("slug", event.target.value)}
-                  value={props.draft.provider.slug}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="setup-provider-timezone">Timezone</Label>
-                <Input
-                  disabled={!props.onProviderFieldChange || !!props.entities.provider}
-                  id="setup-provider-timezone"
-                  onChange={(event) => props.onProviderFieldChange?.("timeZoneId", event.target.value)}
-                  value={props.draft.provider.timeZoneId}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="setup-provider-email">Contact email</Label>
-                <Input
-                  disabled={!props.onProviderFieldChange || !!props.entities.provider}
-                  id="setup-provider-email"
-                  onChange={(event) => props.onProviderFieldChange?.("contactEmail", event.target.value)}
-                  value={props.draft.provider.contactEmail}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="setup-provider-description">Short public description</Label>
-              <Textarea
-                disabled={!props.onProviderFieldChange || !!props.entities.provider}
-                id="setup-provider-description"
-                onChange={(event) => props.onProviderFieldChange?.("publicDescription", event.target.value)}
-                value={props.draft.provider.publicDescription}
-              />
-            </div>
+            <ProviderFieldsSection entities={props.entities} draft={props.draft} onProviderFieldChange={props.onProviderFieldChange} />
           </SetupSectionCard>
 
           <SetupSectionCard
@@ -361,35 +420,7 @@ export function ProviderSetupFlow(props: {
             testId="resource-form-card"
             title="Resource"
           >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="setup-resource-name">Resource name</Label>
-                <Input
-                  disabled={!props.onResourceFieldChange || !props.entities.provider || !!props.entities.resource}
-                  id="setup-resource-name"
-                  onChange={(event) => props.onResourceFieldChange?.("displayName", event.target.value)}
-                  value={props.draft.resource.displayName}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="setup-resource-type">Resource type</Label>
-                <Input
-                  disabled={!props.onResourceFieldChange || !props.entities.provider || !!props.entities.resource}
-                  id="setup-resource-type"
-                  onChange={(event) => props.onResourceFieldChange?.("resourceType", event.target.value)}
-                  value={props.draft.resource.resourceType}
-                />
-              </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="setup-resource-timezone">Timezone</Label>
-                <Input
-                  disabled={!props.onResourceFieldChange || !props.entities.provider || !!props.entities.resource}
-                  id="setup-resource-timezone"
-                  onChange={(event) => props.onResourceFieldChange?.("timeZoneId", event.target.value)}
-                  value={props.draft.resource.timeZoneId}
-                />
-              </div>
-            </div>
+            <ResourceFieldsSection entities={props.entities} draft={props.draft} onResourceFieldChange={props.onResourceFieldChange} />
           </SetupSectionCard>
 
           <SetupSectionCard

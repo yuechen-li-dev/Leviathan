@@ -15,6 +15,69 @@ export const publicBookingVerticalBreakpoint = 768;
 
 export type PublicBookingLayoutMode = "horizontal" | "vertical";
 
+/**
+ * M3.5: the horizontal and vertical booking layouts were originally two
+ * fully separate ~150-line functions. On closer inspection (deeper than
+ * the original M3.5 scoping pass), they're not "the same rows repositioned
+ * by breakpoint" - desktop and mobile render entirely different registered
+ * view components (bookingSummaryPanel vs bookingMobileSummaryCard, etc.),
+ * not the same content at a different frame. `M.when` variants change a
+ * row's own frame per viewport; they don't let one row render a different
+ * component per viewport, so full consolidation into one row set doesn't
+ * fit here the way it did for setup/bookings/confirmation's dead-row
+ * cleanups. What both functions *do* genuinely duplicate is the shell
+ * scaffolding (root, header, content area, debug inspector) - that's
+ * real, safe-to-share boilerplate, factored out here without touching the
+ * two content trees, which stay separate because they're actually
+ * different components.
+ */
+function buildPublicBookingShellRows(
+  rootRect: Rect,
+  options: {
+    headerId: string;
+    headerView: string;
+    headerHeight: number;
+    contentId: string;
+    contentArrange?: LayoutRow["arrange"];
+    inspectorHeight: number;
+    debugLabel: string;
+  },
+): LayoutRow[] {
+  return [
+    {
+      id: "root",
+      frame: { kind: "root" },
+      arrange: { kind: "stack", axis: "vertical" },
+      debugLabel: options.debugLabel,
+    },
+    {
+      id: options.headerId,
+      parent: "root",
+      frame: { kind: "fixed", width: rootRect.width, height: options.headerHeight },
+      view: options.headerView,
+      debugLabel: "Public booking header (shell-shared)",
+    },
+    {
+      id: options.contentId,
+      parent: "root",
+      frame: { kind: "fill", weight: 1, cross: "fill" },
+      ...(options.contentArrange ? { arrange: options.contentArrange } : {}),
+      debugLabel: "Public booking content area",
+    },
+    ...(options.inspectorHeight > 0
+      ? [
+          {
+            id: "debug-inspector",
+            parent: "root",
+            frame: { kind: "fixed" as const, width: rootRect.width, height: options.inspectorHeight },
+            view: "debugInspector",
+            debugLabel: "M23 debug layout/state inspector",
+          },
+        ]
+      : []),
+  ];
+}
+
 function buildSchedulingShellRows(
   rootRect: Rect,
   heroHeight: number,
@@ -227,44 +290,15 @@ export function buildPublicBookingHorizontalLayout(
   const inspectorHeight = getSchedulingInspectorHeight(rootRect, inspectorEnabled);
   const bookingRootPadding = rootRect.width < 1080 ? 16 : 20;
   const bookingRootGap = 20;
-  const shellRows = [
-    {
-      id: "root",
-      frame: { kind: "root" as const },
-      arrange: { kind: "stack" as const, axis: "vertical" as const },
-      debugLabel: `Scheduling booking horizontal shell ${rootRect.width}x${rootRect.height}`,
-    },
-    {
-      id: "booking-header",
-      parent: "root",
-      frame: { kind: "fixed" as const, width: rootRect.width, height: headerHeight },
-      view: "bookingHeader",
-      debugLabel: "Public booking header",
-    },
-    {
-      id: "booking-root-horizontal",
-      parent: "root",
-      frame: { kind: "fill" as const, weight: 1, cross: "fill" as const },
-      arrange: {
-        kind: "stack" as const,
-        axis: "horizontal" as const,
-        gap: bookingRootGap,
-        padding: bookingRootPadding,
-      },
-      debugLabel: "Public booking horizontal root",
-    },
-    ...(inspectorHeight > 0
-      ? [
-          {
-            id: "debug-inspector",
-            parent: "root",
-            frame: { kind: "fixed" as const, width: rootRect.width, height: inspectorHeight },
-            view: "debugInspector",
-            debugLabel: "M23 debug layout/state inspector",
-          },
-        ]
-      : []),
-  ] satisfies LayoutRow[];
+  const shellRows = buildPublicBookingShellRows(rootRect, {
+    headerId: "booking-header",
+    headerView: "bookingHeader",
+    headerHeight,
+    contentId: "booking-root-horizontal",
+    contentArrange: { kind: "stack", axis: "horizontal", gap: bookingRootGap, padding: bookingRootPadding },
+    inspectorHeight,
+    debugLabel: `Scheduling booking horizontal shell ${rootRect.width}x${rootRect.height}`,
+  });
 
   const shellLayout = resolveLayoutRows(shellRows, rootRect);
   const bodyRect = getRemainingStackRect(shellLayout, {
@@ -370,38 +404,14 @@ export function buildPublicBookingVerticalLayout(
 } {
   const headerHeight = 82;
   const inspectorHeight = getSchedulingInspectorHeight(rootRect, inspectorEnabled);
-  const shellRows = [
-    {
-      id: "root",
-      frame: { kind: "root" as const },
-      arrange: { kind: "stack" as const, axis: "vertical" as const },
-      debugLabel: `Scheduling booking vertical shell ${rootRect.width}x${rootRect.height}`,
-    },
-    {
-      id: "booking-header-mobile",
-      parent: "root",
-      frame: { kind: "fixed" as const, width: rootRect.width, height: headerHeight },
-      view: "bookingMobileHeader",
-      debugLabel: "Public booking mobile header",
-    },
-    {
-      id: "booking-root-vertical",
-      parent: "root",
-      frame: { kind: "fill" as const, weight: 1, cross: "fill" as const },
-      debugLabel: "Public booking vertical root",
-    },
-    ...(inspectorHeight > 0
-      ? [
-          {
-            id: "debug-inspector",
-            parent: "root",
-            frame: { kind: "fixed" as const, width: rootRect.width, height: inspectorHeight },
-            view: "debugInspector",
-            debugLabel: "M23 debug layout/state inspector",
-          },
-        ]
-      : []),
-  ] satisfies LayoutRow[];
+  const shellRows = buildPublicBookingShellRows(rootRect, {
+    headerId: "booking-header-mobile",
+    headerView: "bookingMobileHeader",
+    headerHeight,
+    contentId: "booking-root-vertical",
+    inspectorHeight,
+    debugLabel: `Scheduling booking vertical shell ${rootRect.width}x${rootRect.height}`,
+  });
 
   const bodyRect = getRemainingStackRect(resolveLayoutRows(shellRows, rootRect), {
     parentId: "root",

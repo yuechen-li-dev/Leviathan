@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { Atlas } from "machinalayout/atlas";
+import { Table } from "machinalayout/table";
 import { SchedulingAtlas } from "./SchedulingAtlas";
 
 describe("SchedulingAtlas", () => {
@@ -53,5 +55,30 @@ describe("SchedulingAtlas", () => {
     expect(publicBooking?.owns).not.toContain("PublicBookingFlowView");
     expect(publicBooking?.owns).not.toContain("LivePublicBookingView");
     expect(publicBooking?.tags).toEqual(expect.arrayContaining(["deusmachina", "async"]));
+  });
+
+  it("M3.5: table-authored form actually catches malformed cells - the thing hand-written object literals never did across M1-M3's stale-note fixes", () => {
+    // "surface" isn't one of the declared MachinaAtlasSectionKind values -
+    // exactly the kind of typo that would have silently produced a
+    // slightly-wrong runtime object in the old hand-written array.
+    expect(() =>
+      Table.defineWithSchema({
+        id: "brokenAtlas",
+        schema: Atlas.sectionTableSchema(),
+        columns: {
+          key: ["setup", "confirmation"],
+          name: ["Provider setup wizard", "Booking confirmation"],
+          kind: ["page", "surface" as unknown as "page"],
+          route: [undefined, undefined],
+          file: [undefined, undefined],
+          fixture: [undefined, undefined],
+          owns: [[], []],
+          uses: [[], []],
+          usedBy: [[], []],
+          tags: [[], []],
+          notes: [undefined, undefined],
+        },
+      }),
+    ).toThrowError(/InvalidTableEnumValue.*brokenAtlas\.kind/s);
   });
 });
