@@ -39,7 +39,7 @@ function fixedFrame(
   return row?.frame.kind === "fixed" ? row.frame : null;
 }
 
-describe("scheduling layout geometry", () => {
+describe("shared shell (sidebar geometry)", () => {
   it("keeps the wide sidebar aligned to the resolved content stack height", () => {
     const rootRect = { x: 0, y: 0, width: 1440, height: 1024 };
     const { rows } = buildSchedulingLayout(rootRect, landingScenario, true);
@@ -63,25 +63,9 @@ describe("scheduling layout geometry", () => {
       height: 160,
     });
   });
+});
 
-  it("adds explicit Machina booking regions for the public booking desktop surface", () => {
-    const rootRect = { x: 0, y: 0, width: 1440, height: 1024 };
-    const { rows } = buildSchedulingLayout(rootRect, bookingScenario, false);
-
-    expect(rows.map((row) => row.id)).toEqual(
-      expect.arrayContaining([
-        "booking-header",
-        "booking-root-horizontal",
-        "booking-summary-panel",
-        "booking-main-panel",
-        "booking-main-header",
-        "booking-calendar-region",
-        "booking-slots-region",
-        "booking-footer-summary",
-      ]),
-    );
-  });
-
+describe("setup/ layout", () => {
   it("resolves the guided setup surface through a single rendered slot (M0: dead sub-rows removed)", () => {
     const rootRect = { x: 0, y: 0, width: 1440, height: 1024 };
     const { rows } = buildSchedulingLayout(rootRect, setupScenario, false);
@@ -109,6 +93,26 @@ describe("scheduling layout geometry", () => {
     expect(root?.view).toBe("schedulingMain");
     expect(root?.frame).toMatchObject({ kind: "fixed" });
     expect(() => resolveLayoutRows(rows, rootRect)).not.toThrow();
+  });
+});
+
+describe("publicBooking/ layout", () => {
+  it("adds explicit Machina booking regions for the public booking desktop surface", () => {
+    const rootRect = { x: 0, y: 0, width: 1440, height: 1024 };
+    const { rows } = buildSchedulingLayout(rootRect, bookingScenario, false);
+
+    expect(rows.map((row) => row.id)).toEqual(
+      expect.arrayContaining([
+        "booking-header",
+        "booking-root-horizontal",
+        "booking-summary-panel",
+        "booking-main-panel",
+        "booking-main-header",
+        "booking-calendar-region",
+        "booking-slots-region",
+        "booking-footer-summary",
+      ]),
+    );
   });
 
   it("resolves the public booking layout without Machina overflow", () => {
@@ -179,7 +183,9 @@ describe("scheduling layout geometry", () => {
     expect(() => resolveLayoutRows(rows, rootRect)).not.toThrow();
     expect(() => resolveLayoutRows(buildSchedulingLayout(rootRect, bookingScenario, false).rows, rootRect)).not.toThrow();
   });
+});
 
+describe("confirmation/ layout", () => {
   it("resolves the confirmation surface through a single rendered slot (M2: dead sub-rows removed)", () => {
     const rootRect = { x: 0, y: 0, width: 1440, height: 1024 };
     const { rows } = buildSchedulingLayout(rootRect, confirmationScenario, false);
@@ -211,7 +217,9 @@ describe("scheduling layout geometry", () => {
     expect(root?.frame).toMatchObject({ kind: "fixed" });
     expect(() => resolveLayoutRows(rows, rootRect)).not.toThrow();
   });
+});
 
+describe("bookings/ layout", () => {
   it("resolves the bookings surface through a single rendered slot (M1: dead sub-rows removed)", () => {
     const rootRect = { x: 0, y: 0, width: 1440, height: 1024 };
     const { rows } = buildSchedulingLayout(rootRect, bookingsScenario, false);

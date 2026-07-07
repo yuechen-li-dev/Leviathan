@@ -1,148 +1,32 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+// Scheduling app shell dispatch layer (M4 cutover). What's left here after
+// M0-M3.5 moved every surface into its own directory: the three
+// screen-catalog-registered shell views (Hero/Main/Sidebar) that route each
+// surface's fixture or live component into the right slot, plus their live
+// counterparts. This is not a monolith remnant waiting to be deleted - it's
+// the legitimate, appropriately-scoped shell layer every other app in this
+// codebase has too (compare src/machina/views.tsx, which does the same job
+// for the non-scheduling routes). M4 stripped ~90 dead imports left over
+// from the deleted booking-flow/setup/confirmation/bookings-list code that
+// used to live in this file before M0-M3 moved it out; nothing below
+// actually used them.
+
 import type { MachinaSlotProps } from "machinalayout/react";
-import type {
-  BookableSlot,
-  Booking,
-  BookingAuditEvent,
-  BookableResource,
-  AvailabilityRule,
-  HoldResponse,
-  LocalDevPlatformContext,
-  NotificationSummary,
-  Provider,
-  ReplacementHoldResponse,
-  ScheduledNotification,
-  SchedulingLifecycleSummary,
-  SchedulingService,
-} from "./types";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
-import { ModeToggle } from "@/components/mode-toggle";
-import {
-  assignResourceToService,
-  cancelBooking,
-  confirmBooking,
-  createReplacementHold,
-  createAvailabilityRule,
-  createHold,
-  createProvider,
-  createResource,
-  createService,
-  fakeSatisfyPayment,
-  getBooking,
-  getBookingAudit,
-  getBookingLifecycle,
-  getBookingNotifications,
-  getLocalDevContext,
-  getPublicProvider,
-  getPublicServices,
-  listProviderBookings,
-  listSlots,
-  schedulingEndpoints,
-  submitIntake,
-} from "./api";
-import { slotSelected } from "./dispatch";
-import { resolveSchedulingFixtureScenario, type SchedulingFixtureScenario } from "./fixtures";
-import {
-  bookingActionLabels,
-  bookingPrimaryStatusBody,
-  bookingPrimaryStatusHeading,
-  bookingRescheduleStateCopy,
-  browserTimeZone,
-  buildAvailableDates,
-  buildMonthOptions,
-  chipToneForValue,
-  dateFromDateKey,
-  dateKeyForDate,
-  dateKeyForSlot,
-  formatDateTimeRange,
-  formatDurationMinutes,
-  formatSlotSummary,
-  formatTimestamp,
-  hasLifecycleCheckpoint,
-  hasRescheduleRelation,
-  initialsOf,
-  isBookingReschedulable,
-  isPaymentRequiredError,
-  lifecycleStateLabel,
-  longDateLabelForDateKey,
-  longDateLabelForSlot,
-  monthDateFromMonthKey,
-  monthKeyForDate,
-  nextStepLinesForBooking,
-  notificationSummaryLabel,
-  paymentRequirementLabel,
-  paymentStatusLabel,
-  paymentSummaryLabel,
-  paymentToneValue,
-  servicePriceLabel,
-  slotKey,
-  slotMatchesBooking,
-  statusLabel,
-  timeLabelForSlot,
-} from "./shared/format";
-
-import {
-  adminGateMessage,
-  bookingIdFromPath,
-  controlledSchedulingError,
-  currentQueryString,
-  defaultCustomer,
-  defaultProviderSlug,
-  fixtureCustomer,
-  isFixtureMode,
-  isOwnershipError,
-  isUnsafeAdminError,
-  linkWithCurrentQuery,
-  liveNotificationPolicy,
-  livePaymentPolicy,
-  liveRouteLabel,
-  liveRouteTitle,
-  loadLiveContext,
-  localDevAdminWarning,
-  pathname,
-  providerSlugFromPath,
-  queryValue,
-  saveLiveContext,
-  type LiveSchedulingContext,
-} from "./shared/liveContext";
-
-type SlotProps = MachinaSlotProps<unknown, { dispatch?: (event: unknown) => void }>;
-type DispatchNodeData = { dispatch?: (event: unknown) => void };
-type SchedulingViewData = { scenario: SchedulingFixtureScenario };
-
-import { AdminModeBanner, OwnershipSummary } from "./shared/AdminGateBanner";
+import { StatusChip } from "./shared/StatusChip";
+import { BookingStatusSummary } from "./shared/BookingStatusSummary";
+import { isFixtureMode, linkWithCurrentQuery, liveRouteLabel, liveRouteTitle, loadLiveContext, pathname } from "./shared/liveContext";
 import { LiveProviderSetupView } from "./setup/LiveProviderSetupView";
 import { ProviderSetupView } from "./setup/ProviderSetupFlow";
 import { SchedulingHomeView } from "./landing/SchedulingHomeView";
 import { LiveSchedulingLandingView } from "./landing/LiveSchedulingLandingView";
 import { ProviderBookingsView } from "./bookings/ProviderBookingsView";
 import { LiveProviderBookingsView } from "./bookings/LiveProviderBookingsView";
-import { BookingDebugPanel } from "./bookings/BookingDebugPanel";
 import { ConfirmationSurfaceView } from "./confirmation/ConfirmationSurfaceView";
 import { LiveConfirmationView } from "./confirmation/LiveConfirmationView";
 import { BookingReschedulePanel } from "./confirmation/BookingReschedulePanel";
-import { BookingStatusSummary } from "./shared/BookingStatusSummary";
-import { BookingMetaPanels } from "./shared/BookingMetaPanels";
-import { StatusChip } from "./shared/StatusChip";
+import type { SchedulingFixtureScenario } from "./fixtures";
+
+type SlotProps = MachinaSlotProps<unknown, { dispatch?: (event: unknown) => void }>;
+type SchedulingViewData = { scenario: SchedulingFixtureScenario };
 
 function scenarioFrom(props: SlotProps): SchedulingFixtureScenario {
   return (props.viewData as SchedulingViewData).scenario;
@@ -263,8 +147,6 @@ export function SchedulingSidebarView(props: SlotProps) {
     </section>
   );
 }
-
-
 
 function LiveSchedulingHero() {
   return (

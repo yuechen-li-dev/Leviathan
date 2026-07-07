@@ -42,7 +42,17 @@ const confirmedBooking = {
   notificationSummary: { pending: 1, sentFake: 1, cancelled: 0, skipped: 0, failed: 0, deferredProviderUnavailable: 0 },
 };
 
-describe("scheduling frontend module", () => {
+// M4 cutover: this file predates the M0-M3.5 surface split and was never
+// physically relocated (each surface's own machine/live-orchestration tests
+// already live in their own directories - setupMachine.test.ts,
+// rescheduleMachine.test.ts, PublicBooking.test.tsx, etc. - this file is
+// specifically the leftover fixture-mode SSR regression coverage for
+// components whose presentational shape didn't change across the rewrite).
+// Kept as one file since these are all cheap renderToStaticMarkup checks
+// with shared fixture data, but the describe blocks now match the source
+// split instead of one "scheduling frontend module" catch-all.
+
+describe("shared infra (api, dispatch)", () => {
   it("declares expected API endpoints", () => {
     expect(schedulingEndpoints.holds).toBe("/apps/scheduling/holds");
     expect(schedulingEndpoints.publicSlots("demo", "svc", "a", "b", "UTC")).toContain("/apps/scheduling/public/demo/slots");
@@ -66,14 +76,36 @@ describe("scheduling frontend module", () => {
   it("slot selection emits hold action intent", () => {
     expect(slotSelected(slot)).toEqual({ type: "scheduling.slot-selected", slot });
   });
+});
 
+describe("shared/ (StatusChip, AdminGateBanner, liveContext)", () => {
+  it("status chips render expected labels", () => {
+    const html = renderToStaticMarkup(createElement(StatusChip, { tone: "warning", label: "Payment required" }));
+    expect(html).toContain("Payment required");
+    expect(html).toContain("status-chip-warning");
+  });
+
+  it("admin gate error displays useful message", () => {
+    const html = renderToStaticMarkup(createElement(AdminModeBanner, { errorMessage: "unsafe_admin_disabled" }));
+    expect(html).toContain("Admin gate blocked");
+    expect(html).toContain("Restart the backend with LEVIATHAN_ALLOW_UNSAFE_ADMIN=true");
+  });
+
+  it("renders useful scheduling errors", () => {
+    expect(controlledSchedulingError("payment_required")).toContain("Payment is required before confirmation");
+  });
+});
+
+describe("landing/", () => {
   it("scheduling landing renders action cards and proof points", () => {
     const html = renderToStaticMarkup(createElement(SchedulingHomeView, { scenario: resolveSchedulingFixtureScenario({ pathname: "/apps/scheduling", search: "?fixture=landing" }) }));
     expect(html).toContain("Action cards");
     expect(html).toContain("Provider setup");
     expect(html).toContain("Public booking with a calm summary panel");
   });
+});
 
+describe("setup/", () => {
   it("provider setup view renders local/dev warning and public link", () => {
     const html = renderToStaticMarkup(createElement(ProviderSetupView, { providerSlug: "demo", providerTimeZone: "America/Chicago" }));
     expect(html).toContain("Local/dev admin mode");
@@ -113,12 +145,27 @@ describe("scheduling frontend module", () => {
     expect(html).toContain("This provider is not owned by the current local-dev Scheduling installation");
   });
 
-  it("admin gate error displays useful message", () => {
-    const html = renderToStaticMarkup(createElement(AdminModeBanner, { errorMessage: "unsafe_admin_disabled" }));
-    expect(html).toContain("Admin gate blocked");
-    expect(html).toContain("Restart the backend with LEVIATHAN_ALLOW_UNSAFE_ADMIN=true");
+  it("provider setup fixture result card renders generated booking link and summary", () => {
+    const scenario = resolveSchedulingFixtureScenario({ pathname: "/apps/scheduling/setup", search: "?fixture=provider-setup" });
+    const html = renderToStaticMarkup(
+      createElement(ProviderSetupView, {
+        providerSlug: scenario.providerSlug,
+        providerTimeZone: scenario.providerTimeZone,
+        localDevContext: scenario.localDevContext,
+        provider: scenario.setupProvider,
+        resource: scenario.setupResource,
+        service: scenario.setupService,
+        availabilityRule: scenario.setupAvailabilityRule,
+      }),
+    );
+    expect(html).toContain("Your public booking page is ready");
+    expect(html).toContain("Open booking page");
+    expect(html).toContain("Provider: prov_demo");
+    expect(html).toContain("Availability rule: avail_demo_weekdays");
   });
+});
 
+describe("confirmation/ (ConfirmationView)", () => {
   it("confirmation view includes booking id/timezone/ICS link when appropriate", () => {
     const html = renderToStaticMarkup(createElement(ConfirmationView, { booking: confirmedBooking, serviceName: "Consult", resourceName: "Ada" }));
     expect(html).toContain("Booking confirmed");
@@ -128,27 +175,13 @@ describe("scheduling frontend module", () => {
     expect(html).toContain("/apps/scheduling/bookings/b/ics");
   });
 
-  it("status chips render expected labels", () => {
-    const html = renderToStaticMarkup(createElement(StatusChip, { tone: "warning", label: "Payment required" }));
-    expect(html).toContain("Payment required");
-    expect(html).toContain("status-chip-warning");
+  it("notification summary copy stays honest about provider connections", () => {
+    const html = renderToStaticMarkup(createElement(ConfirmationView, { booking: confirmedBooking, serviceName: "Consult", resourceName: "Ada" }));
+    expect(html).toContain("no real email/SMS provider connected");
   });
+});
 
-  it("confirmed booking detail renders payment and notification labels", () => {
-    const html = renderToStaticMarkup(createElement(ProviderBookingsView, { bookings: [confirmedBooking] }));
-    expect(html).toContain("Payment satisfied (local test)");
-    expect(html).toContain("Notifications pending 1");
-    expect(html).toContain("Cancel booking");
-    expect(html).toContain("Inspect lifecycle");
-  });
-
-  it("cancelled booking status renders without ICS", () => {
-    const html = renderToStaticMarkup(createElement(ProviderBookingsView, { bookings: [{ ...confirmedBooking, status: "cancelled" }] }));
-    expect(html).toContain("Cancelled");
-    expect(html).not.toContain("Cancel booking");
-    expect(html).not.toContain("/ics");
-  });
-
+describe("confirmation/ (BookingReschedulePanel fixture rendering)", () => {
   it("reschedule panel shows safe replacement copy only for confirmed bookings", () => {
     const confirmedHtml = renderToStaticMarkup(
       createElement(BookingReschedulePanel, {
@@ -200,6 +233,23 @@ describe("scheduling frontend module", () => {
     expect(html).toContain("Rescheduled to book_demo_rescheduled_new.");
     expect(html).toContain("Rescheduled from book_demo_rescheduled_old.");
   });
+});
+
+describe("bookings/", () => {
+  it("confirmed booking detail renders payment and notification labels", () => {
+    const html = renderToStaticMarkup(createElement(ProviderBookingsView, { bookings: [confirmedBooking] }));
+    expect(html).toContain("Payment satisfied (local test)");
+    expect(html).toContain("Notifications pending 1");
+    expect(html).toContain("Cancel booking");
+    expect(html).toContain("Inspect lifecycle");
+  });
+
+  it("cancelled booking status renders without ICS", () => {
+    const html = renderToStaticMarkup(createElement(ProviderBookingsView, { bookings: [{ ...confirmedBooking, status: "cancelled" }] }));
+    expect(html).toContain("Cancelled");
+    expect(html).not.toContain("Cancel booking");
+    expect(html).not.toContain("/ics");
+  });
 
   it("audit/lifecycle panel renders mocked summaries", () => {
     const html = renderToStaticMarkup(
@@ -223,35 +273,9 @@ describe("scheduling frontend module", () => {
     expect(html).toContain("provider_cancelled");
     expect(html).toContain("Payment required");
   });
+});
 
-  it("renders useful scheduling errors", () => {
-    expect(controlledSchedulingError("payment_required")).toContain("Payment is required before confirmation");
-  });
-
-  it("provider setup fixture result card renders generated booking link and summary", () => {
-    const scenario = resolveSchedulingFixtureScenario({ pathname: "/apps/scheduling/setup", search: "?fixture=provider-setup" });
-    const html = renderToStaticMarkup(
-      createElement(ProviderSetupView, {
-        providerSlug: scenario.providerSlug,
-        providerTimeZone: scenario.providerTimeZone,
-        localDevContext: scenario.localDevContext,
-        provider: scenario.setupProvider,
-        resource: scenario.setupResource,
-        service: scenario.setupService,
-        availabilityRule: scenario.setupAvailabilityRule,
-      }),
-    );
-    expect(html).toContain("Your public booking page is ready");
-    expect(html).toContain("Open booking page");
-    expect(html).toContain("Provider: prov_demo");
-    expect(html).toContain("Availability rule: avail_demo_weekdays");
-  });
-
-  it("notification summary copy stays honest about provider connections", () => {
-    const html = renderToStaticMarkup(createElement(ConfirmationView, { booking: confirmedBooking, serviceName: "Consult", resourceName: "Ada" }));
-    expect(html).toContain("no real email/SMS provider connected");
-  });
-
+describe("publicBooking/", () => {
   it("calendar wrapper marks selected, available, and unavailable fixture dates accessibly", () => {
     const scenario = resolveSchedulingFixtureScenario({ pathname: "/book/demo-provider", search: "?fixture=public-booking" });
     const workingSessionScenario = {
