@@ -45,13 +45,18 @@ export function useAsyncTask<TEnv, TInput, TOutput, TError>(
   const [snapshot, setSnapshot] = useState(() => controllerRef.current!.getSnapshot());
 
   const mountedRef = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // React development Strict Mode deliberately exercises effects as
+    // setup -> cleanup -> setup. Restore this guard during every setup so
+    // the second pass can publish a task result; cleanup still protects a
+    // real unmount from a late completion.
+    mountedRef.current = true;
+
+    return () => {
       mountedRef.current = false;
       controllerRef.current?.cancel("unmounted");
-    },
-    [],
-  );
+    };
+  }, []);
 
   const run = useCallback((input: TInput) => {
     const controller = controllerRef.current!;

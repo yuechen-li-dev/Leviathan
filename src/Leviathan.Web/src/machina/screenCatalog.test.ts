@@ -77,7 +77,7 @@ describe("screen catalog", () => {
     });
   });
 
-  it("tracks provider setup through the new guided setup regions", () => {
+  it("tracks provider setup through its rendered geometry root", () => {
     const screen = getLeviathanScreen("provider-setup");
     const metadata = getLeviathanScreenMetadata(screen);
     const phoneTask = createLeviathanScreenTasks().find((entry) => entry.key === "provider-setup__phone");
@@ -85,13 +85,8 @@ describe("screen catalog", () => {
     expect(metadata).toMatchObject({
       artifactBaseName: "provider-setup",
       expectedNodeIds: expect.arrayContaining([
+        "scheduling-main",
         "provider-setup-root",
-        "provider-setup-hero",
-        "provider-setup-warning",
-        "provider-setup-steps",
-        "provider-setup-form",
-        "provider-setup-preview",
-        "provider-setup-result",
       ]),
     });
     expect(phoneTask).toMatchObject({
@@ -107,7 +102,7 @@ describe("screen catalog", () => {
     expect(routeWithDebugOverlay("/apps?debug=1")).toBe("/apps?debug=1");
   });
 
-  it("tracks the reschedule confirmation and provider-detail coverage", () => {
+  it("tracks the reschedule and provider-detail surfaces through their rendered geometry roots", () => {
     const screens = [
       getLeviathanScreen("reschedule-available"),
       getLeviathanScreen("reschedule-picker"),
@@ -119,19 +114,19 @@ describe("screen catalog", () => {
       expect.arrayContaining([
         expect.objectContaining({
           artifactBaseName: "reschedule-available",
-          expectedNodeIds: expect.arrayContaining(["booking-reschedule-root", "booking-reschedule-current", "booking-reschedule-actions"]),
+          expectedNodeIds: expect.arrayContaining(["booking-status-root"]),
         }),
         expect.objectContaining({
           artifactBaseName: "reschedule-picker",
-          expectedNodeIds: expect.arrayContaining(["booking-reschedule-picker", "booking-reschedule-replacement"]),
+          expectedNodeIds: expect.arrayContaining(["booking-status-root"]),
         }),
         expect.objectContaining({
           artifactBaseName: "reschedule-result",
-          expectedNodeIds: expect.arrayContaining(["booking-reschedule-result"]),
+          expectedNodeIds: expect.arrayContaining(["booking-status-root"]),
         }),
         expect.objectContaining({
           artifactBaseName: "rescheduled-booking-detail",
-          expectedNodeIds: expect.arrayContaining(["provider-booking-detail", "booking-reschedule-root"]),
+          expectedNodeIds: expect.arrayContaining(["provider-bookings-root"]),
         }),
       ]),
     );

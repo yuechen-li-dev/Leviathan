@@ -1,9 +1,10 @@
-# Scheduling app frontend conventions (M4)
+# Scheduling app frontend conventions (post-M4, reviewed in M28)
 
 Written at the end of the M0-M4 milestone ladder, once there were four real
-examples to compare instead of guessing at a convention in advance. Update
-this file when a fifth machine or app teaches something new - don't let it
-go stale the way the old monolithic `views.tsx` header comments would have.
+examples to compare instead of guessing at a convention in advance. M28
+confirmed the split remains current: each major surface owns its directory,
+`views.tsx` dispatches shell slots, and `layouts.ts` defines geometry. Update
+this file when a fifth machine or app teaches something new.
 
 ## The three real `M.machine` instances
 
@@ -52,7 +53,7 @@ onto a "replace try/catch" task.
 **Convention going forward:** if a new machine's steps have real ordering
 prerequisites (must do X before Y), model that as real states with `when`
 guards, the way setup does. If they don't (steps can happen in any order,
-or businesss logic doesn't care about interleaving), keep the stage machine
+or business logic doesn't care about interleaving), keep the stage machine
 to macro-visible states only and let `AsyncTaskController` own each step's
 own lifecycle, the way reschedule and public booking do.
 
@@ -103,6 +104,21 @@ than from the machine's own state, until `useDeusMachine`'s hook API grows
 support for the hydration options `createDeusSnapshot`/
 `hydrateDeusSnapshot` gained in 0.4.1 (checked as of 0.6.0: still not
 threaded through the hook).
+
+## Shell and table ownership
+
+Keep surface behavior in `setup/`, `landing/`, `publicBooking/`,
+`confirmation/`, or `bookings/`; put only shared presentation/live-context
+helpers in `shared/`. `views.tsx` dispatches fixture/live surfaces into
+registered shell slots, while `layouts.ts` owns the explicit geometry. Do
+not merge the horizontal and vertical public-booking layout trees: they
+register different components and share only their shell scaffolding.
+
+MachinaLayout 0.6.0 table bridges are used where a repeated declarative
+shape fits (`Atlas.defineAtlasFromTable`, forms, commands, and setup's
+pending-result transitions). Keep an exceptional transition hand-written
+when it needs behavior the template cannot express; do not reshape domain
+behavior merely to fit a table.
 
 ## The fixture/live unification question, revisited with four real examples
 

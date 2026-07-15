@@ -68,24 +68,22 @@ test.describe("Scheduling real backend reschedule smoke", () => {
       artifactRoot: "ui-snapshots-real",
     });
 
-    await clickAction(page, "booking-reschedule-submit-intake");
-    if (await page.getByTestId("booking-reschedule-fake-satisfy-payment").count()) {
+    await clickActionAndWaitForPost(page, "booking-reschedule-submit-intake", "/intake");
+    let confirmationResponse = await clickActionAndWaitForPost(page, "booking-reschedule-confirm", "/bookings/confirm");
+    if (confirmationResponse.status() === 400) {
+      // The backend's controlled first confirmation establishes that this
+      // replacement needs local/test payment. Only then is the payment
+      // command eligible; await each task-backed command before continuing.
       const paymentButton = page.getByTestId("booking-reschedule-fake-satisfy-payment");
-      if (await paymentButton.isVisible()) {
-        await paymentButton.click();
-      }
+      await expect(paymentButton).toBeVisible({ timeout: 30_000 });
+      await expect(paymentButton).toBeEnabled({ timeout: 30_000 });
+      const paymentResponse = await clickActionAndWaitForPost(page, "booking-reschedule-fake-satisfy-payment", "/payment/fake-satisfy");
+      expect(paymentResponse.ok()).toBe(true);
+      expect(await paymentResponse.json()).toMatchObject({ paymentRequirementStatus: "satisfied" });
+      await expect(page.getByText("No payment required for this replacement.")).toBeVisible({ timeout: 30_000 });
+      confirmationResponse = await clickActionAndWaitForPost(page, "booking-reschedule-confirm", "/bookings/confirm");
     }
-    await clickAction(page, "booking-reschedule-confirm");
-    if (await page.getByTestId("booking-reschedule-fake-satisfy-payment").count()) {
-      const paymentButton = page.getByTestId("booking-reschedule-fake-satisfy-payment");
-      if (await paymentButton.isVisible()) {
-        await paymentButton.evaluate((element) => {
-          (element as HTMLButtonElement).click();
-        });
-        await expect(page.getByText("No payment required for this replacement.")).toBeVisible({ timeout: 30_000 });
-        await clickAction(page, "booking-reschedule-confirm");
-      }
-    }
+    expect(confirmationResponse.ok()).toBe(true);
     await testInfo.attach("reschedule-network-after-confirm.json", {
       body: Buffer.from(JSON.stringify(networkJournal.entries, null, 2), "utf8"),
       contentType: "application/json",
@@ -250,6 +248,19 @@ async function clickAction(page: Page, testId: string) {
   await locator.evaluate((element) => {
     (element as HTMLButtonElement).click();
   });
+}
+
+async function clickActionAndWaitForPost(page: Page, testId: string, endpoint: string) {
+  const response = page.waitForResponse(
+    (candidate) => candidate.request().method() === "POST" && candidate.url().includes(endpoint),
+  );
+  // The non-interactive debug overlay leaves this lower-page action outside
+  // Playwright's viewport hit target. Dispatch the normal DOM click, as the
+  // existing smoke helper does, while still waiting for its network result.
+  await page.getByTestId(testId).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
+  return response;
 }
 
 async function navigateToHref(page: Page, testId: string) {

@@ -173,10 +173,17 @@ export function BookingReschedulePanel(props: {
   const currentBooking = board.oldBookingAfterReschedule ?? props.booking;
   const showResult = Boolean(board.replacementBooking && board.oldBookingAfterReschedule);
   const showReplacementFlow = liveExpanded || Boolean(board.replacementHold) || showResult;
+  // replacementLifecycle is updated by the later intake/payment commands;
+  // the immutable hold lifecycle is only the creation-time snapshot.
+  const paymentRequirementStatus =
+    board.replacementLifecycle?.paymentRequirementStatus ??
+    board.replacementHold?.lifecycle?.paymentRequirementStatus;
+  // The hold endpoint returns the domain status "satisfied"; fixture and
+  // booking summaries may use the display/audit value "payment_satisfied_fake".
+  const paymentSatisfied = paymentRequirementStatus === "satisfied" || paymentRequirementStatus === "payment_satisfied_fake";
   const paymentRequired =
-    board.replacementHold?.lifecycle?.paymentRequirementStatus === "payment_required" ||
-    board.replacementLifecycle?.paymentRequirementStatus === "payment_required" ||
-    isPaymentRequiredError(taskErrorMessage(holdTask.snapshot.board.error) ?? taskErrorMessage(confirmTask.snapshot.board.error));
+    paymentRequirementStatus === "payment_required" ||
+    (!paymentSatisfied && isPaymentRequiredError(taskErrorMessage(holdTask.snapshot.board.error) ?? taskErrorMessage(confirmTask.snapshot.board.error)));
 
   const anyTaskRunning = [holdTask, intakeTask, paymentTask, confirmTask].some((t) => t.snapshot.board.status === "running");
   const errorMessage =

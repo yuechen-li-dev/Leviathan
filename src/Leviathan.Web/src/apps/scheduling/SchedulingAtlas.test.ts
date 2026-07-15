@@ -57,6 +57,15 @@ describe("SchedulingAtlas", () => {
     expect(publicBooking?.tags).toEqual(expect.arrayContaining(["deusmachina", "async"]));
   });
 
+  it("maps each post-M4 surface to its owning directory and preserves the shell/layout boundary", () => {
+    expect(SchedulingAtlas.sections.find((s) => s.key === "setup")?.file).toBe("setup/");
+    expect(SchedulingAtlas.sections.find((s) => s.key === "front-page")?.file).toBe("landing/");
+    expect(SchedulingAtlas.sections.find((s) => s.key === "public-booking")?.file).toBe("publicBooking/");
+    expect(SchedulingAtlas.sections.find((s) => s.key === "confirmation")?.file).toBe("confirmation/");
+    expect(SchedulingAtlas.sections.find((s) => s.key === "bookings")?.file).toBe("bookings/");
+    expect(SchedulingAtlas.sections.find((s) => s.key === "shared-shell")?.file).toBe("views.tsx; layouts.ts");
+  });
+
   it("M3.5: table-authored form actually catches malformed cells - the thing hand-written object literals never did across M1-M3's stale-note fixes", () => {
     // "surface" isn't one of the declared MachinaAtlasSectionKind values -
     // exactly the kind of typo that would have silently produced a

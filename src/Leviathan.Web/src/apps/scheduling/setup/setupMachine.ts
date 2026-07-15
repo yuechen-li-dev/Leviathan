@@ -201,6 +201,12 @@ export function createSetupMachine(): DeusMachine<SetupBoard, SetupEvent> {
         if (e.type !== "providerFailed") return;
         b.errorMessage = e.message;
       }),
+      // MachinaLayout 0.6.0 exposes this table bridge as
+      // DeusTransitionRow<TemplateBoard, TemplateEvent>[] with no board or
+      // event generics to supply. The table is runtime-validated, but its
+      // column strings cannot be related to SetupBoard/SetupEvent in the
+      // published type surface. Keep the boundary cast explicit rather than
+      // adding a local generic wrapper; see docs/m28-machina-table-typing-friction.md.
       ...(pendingResultTransitionsFromTable(pendingResultTable) as unknown as DeusTransitionRow<SetupBoard, SetupEvent>[]),
     ],
   });

@@ -163,6 +163,52 @@ describe("BookingReschedulePanel - live mode actuator wiring", () => {
     await waitFor(() => expect(screen.getByTestId("booking-reschedule-result")).toBeInTheDocument());
   });
 
+  it("allows a fake-paid replacement to recover from a controlled payment-required confirmation", async () => {
+    rescheduleTasks.createReplacementHold.mockResolvedValue({ ...hold, lifecycle: { status: "active" } });
+    rescheduleTasks.submitIntake.mockResolvedValue({ paymentRequirementStatus: "not_required" });
+    rescheduleTasks.confirmBooking
+      .mockRejectedValueOnce(new Error("payment_required"))
+      .mockResolvedValueOnce({ ...booking, id: { value: "new-booking" }, status: "confirmed" });
+    rescheduleTasks.fakeSatisfyPayment.mockResolvedValue({ paymentRequirementStatus: "satisfied", paymentReference: "fakepay_1" });
+    rescheduleTasks.getBooking.mockResolvedValue({ ...booking, status: "rescheduled" });
+
+    render(<BookingReschedulePanel booking={booking} providerSlug="demo" serviceName="30 min" />);
+
+    await act(async () => {
+      screen.getByTestId("booking-reschedule-open").click();
+    });
+    await waitFor(() => expect(screen.getAllByTestId("booking-reschedule-slot-option").length).toBeGreaterThan(0));
+    await act(async () => {
+      screen.getAllByTestId("booking-reschedule-slot-option")[0].click();
+    });
+    await act(async () => {
+      screen.getByTestId("booking-reschedule-create-hold").click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByTestId("booking-reschedule-submit-intake")).toBeInTheDocument());
+    await act(async () => {
+      screen.getByTestId("booking-reschedule-submit-intake").click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      screen.getByTestId("booking-reschedule-confirm").click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByTestId("booking-reschedule-fake-satisfy-payment")).toBeInTheDocument());
+
+    await act(async () => {
+      screen.getByTestId("booking-reschedule-fake-satisfy-payment").click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByText("No payment required for this replacement.")).toBeInTheDocument());
+    expect(screen.getByTestId("booking-reschedule-confirm")).not.toBeDisabled();
+  });
+
   it("does not attempt any network calls before the picker is opened - not eligible bookings return null", () => {
     render(<BookingReschedulePanel booking={{ ...booking, status: "cancelled" } as Booking} providerSlug="demo" serviceName="30 min" />);
     expect(rescheduleTasks.listSlots).not.toHaveBeenCalled();

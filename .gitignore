@@ -433,3 +433,4 @@ src/Leviathan.Web/dist/
 src/Leviathan.Web/playwright-report/
 src/Leviathan.Web/test-results/
 src/Leviathan.Web/*.tsbuildinfo
+src/Leviathan.Web/.vitest-localstorage*

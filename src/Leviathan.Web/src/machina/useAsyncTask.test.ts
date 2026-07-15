@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { StrictMode, createElement, type PropsWithChildren } from "react";
+import { describe, expect, it } from "vitest";
 import { A } from "machinalayout/async";
 import { useAsyncTask } from "./useAsyncTask";
 
@@ -12,6 +13,10 @@ function deferred<T>() {
     reject = rej;
   });
   return { promise, resolve, reject };
+}
+
+function StrictModeWrapper({ children }: PropsWithChildren) {
+  return createElement(StrictMode, null, children);
 }
 
 describe("useAsyncTask", () => {
@@ -26,7 +31,7 @@ describe("useAsyncTask", () => {
       },
     });
 
-    const { result } = renderHook(() => useAsyncTask(task));
+    const { result } = renderHook(() => useAsyncTask(task), { wrapper: StrictModeWrapper });
     expect(result.current.snapshot.board.status).toBe("idle");
 
     let pending!: Promise<unknown>;
@@ -50,7 +55,7 @@ describe("useAsyncTask", () => {
       env: {},
       run: async () => A.err({ message: "boom" }),
     });
-    const { result } = renderHook(() => useAsyncTask(task));
+    const { result } = renderHook(() => useAsyncTask(task), { wrapper: StrictModeWrapper });
 
     await act(async () => {
       await result.current.run(undefined);
@@ -77,7 +82,7 @@ describe("useAsyncTask", () => {
       },
     });
 
-    const { result } = renderHook(() => useAsyncTask(task));
+    const { result } = renderHook(() => useAsyncTask(task), { wrapper: StrictModeWrapper });
 
     let firstRun!: Promise<unknown>;
     act(() => {
@@ -118,7 +123,7 @@ describe("useAsyncTask", () => {
       },
     });
 
-    const { result } = renderHook(() => useAsyncTask(task));
+    const { result } = renderHook(() => useAsyncTask(task), { wrapper: StrictModeWrapper });
     let pending!: Promise<unknown>;
     act(() => {
       pending = result.current.run(undefined);
@@ -131,5 +136,41 @@ describe("useAsyncTask", () => {
 
     gate.resolve();
     await pending;
+  });
+
+  it("cancels a running task on real unmount without publishing its late completion", async () => {
+    const gate = deferred<void>();
+    const started = deferred<void>();
+    const finished = deferred<void>();
+    let observedAbort = false;
+    const task = A.task({
+      id: "unmount-cancellable-task",
+      env: {},
+      run: async (_env, _input: void, ctx) => {
+        started.resolve();
+        await gate.promise;
+        observedAbort = ctx.signal.aborted;
+        finished.resolve();
+        return ctx.signal.aborted ? A.cancelled("unmounted") : A.ok("finished");
+      },
+    });
+
+    const { result, unmount } = renderHook(() => useAsyncTask(task), { wrapper: StrictModeWrapper });
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = result.current.run(undefined);
+    });
+    expect(result.current.snapshot.board.status).toBe("running");
+
+    await act(async () => {
+      await started.promise;
+    });
+
+    unmount();
+    gate.resolve();
+    await pending;
+    await finished.promise;
+
+    expect(observedAbort).toBe(true);
   });
 });

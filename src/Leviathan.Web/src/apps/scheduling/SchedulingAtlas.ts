@@ -1,11 +1,10 @@
-// Stable landmark map for the scheduling app (machinalayout/atlas). "Keep
-// the file. Add the map." - most of the app is still one large views.tsx/
-// layouts.ts, same as before M0; the setup wizard is the one surface that's
-// actually moved into its own directory so far. This atlas describes both:
-// where things live today, and where the still-in-progress split lands
-// each surface (per the M0-M4 milestone ladder), so re-deriving "where does
-// X live" doesn't mean re-reading 3,000+ lines cold, for either a person or
-// a model. Update this file as each later milestone lands its own surface.
+// Stable landmark map for the Scheduling app (machinalayout/atlas). Every
+// major surface now owns a directory: setup/, landing/, publicBooking/,
+// confirmation/, and bookings/; shared/ holds cross-surface presentation
+// and live-context helpers. views.tsx is the shell-dispatch layer and
+// layouts.ts is the explicit Machina geometry layer. This Atlas describes
+// that post-M4 architecture so locating a surface does not require reading
+// the shell or layout definitions end-to-end.
 //
 // M3.5: table-authored via machinalayout/table + Atlas.defineAtlasFromTable
 // instead of a hand-written object array. Same data, same runtime Atlas
@@ -67,18 +66,18 @@ const schedulingAtlasTable = Table.defineWithSchema({
       undefined,
     ],
     file: [
-      undefined,
+      "setup/",
       "shared/format.ts",
       "shared/liveContext.ts",
       "shared/AdminGateBanner.tsx",
       "shared/StatusChip.tsx",
       "shared/BookingMetaPanels.tsx",
       "shared/BookingStatusSummary.tsx",
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+      "landing/",
+      "publicBooking/",
+      "confirmation/",
+      "bookings/",
+      "views.tsx; layouts.ts",
     ],
     fixture: [
       "provider-setup",
