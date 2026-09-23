@@ -11,9 +11,9 @@ public sealed class AriadneSessionPersistence
     private readonly LocalFileLeviathanObjectStore _objectStore;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    public AriadneSessionPersistence(ILeviathanObjectStore objectStore)
+    public AriadneSessionPersistence(LocalFileLeviathanObjectStore objectStore)
     {
-        _objectStore = objectStore as LocalFileLeviathanObjectStore ?? throw new InvalidOperationException("Ariadne persistence currently requires the local file object store because Dominatus SaveFile is path-based.");
+        _objectStore = objectStore;
     }
 
     public string Root => _objectStore.RootPath;

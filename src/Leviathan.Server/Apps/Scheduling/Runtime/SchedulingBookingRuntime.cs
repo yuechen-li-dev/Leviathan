@@ -14,9 +14,9 @@ public sealed class SchedulingBookingRuntime
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     private readonly LocalFileLeviathanObjectStore _objectStore;
 
-    public SchedulingBookingRuntime(ILeviathanObjectStore objectStore)
+    public SchedulingBookingRuntime(LocalFileLeviathanObjectStore objectStore)
     {
-        _objectStore = objectStore as LocalFileLeviathanObjectStore ?? throw new InvalidOperationException("Scheduling lifecycle persistence currently requires the local file object store because Dominatus SaveFile is path-based.");
+        _objectStore = objectStore;
     }
 
     public async Task<SchedulingLifecycleSummary> HoldCreated(Hold hold, string? lastAuditEventId, CancellationToken ct = default) =>

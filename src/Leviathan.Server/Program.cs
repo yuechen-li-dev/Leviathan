@@ -9,15 +9,60 @@ using Leviathan.Server.Platform.Capabilities;
 using Leviathan.Server.Platform.Identity;
 using Leviathan.Server.Platform.Storage;
 using Leviathan.Server.Platform.Storage.Actuation;
+using Leviathan.Server.Platform.Persistence;
+using Leviathan.Server.Platform.Projects;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddSingleton<ILeviathanObjectStore, LocalFileLeviathanObjectStore>();
+SQLitePCL.Batteries_V2.Init();
+if (!builder.Environment.IsDevelopment() && LeviathanLocalDevIdentity.UnsafeAdminEnabled(builder.Configuration))
+    throw new InvalidOperationException("LEVIATHAN_ALLOW_UNSAFE_ADMIN is forbidden outside Development.");
+var dataRoot = Path.GetFullPath(builder.Configuration["LEVIATHAN_DATA_DIR"] ?? Path.Combine(builder.Environment.ContentRootPath, "data"));
+Directory.CreateDirectory(dataRoot);
+var postgres = builder.Configuration["LEVIATHAN_POSTGRES_CONNECTION"];
+if (!builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(postgres))
+    throw new InvalidOperationException("LEVIATHAN_POSTGRES_CONNECTION is required outside Development.");
+if (!builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(builder.Configuration["LEVIATHAN_S3_BUCKET"]))
+    throw new InvalidOperationException("LEVIATHAN_S3_BUCKET and S3 configuration are required outside Development.");
+builder.Services.AddDbContext<LeviathanDbContext>(options =>
+{
+    if (!string.IsNullOrWhiteSpace(postgres)) options.UseNpgsql(postgres);
+    else options.UseSqlite($"Data Source={Path.Combine(dataRoot, "leviathan.db")}");
+});
+builder.Services.AddIdentity<LeviathanUser, IdentityRole>(options =>
+{
+    options.User.RequireUniqueEmail = true;
+    options.Password.RequiredLength = 12;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+    options.Lockout.MaxFailedAccessAttempts = 5;
+}).AddEntityFrameworkStores<LeviathanDbContext>().AddDefaultTokenProviders();
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Cookie.Name = builder.Environment.IsDevelopment() ? "Leviathan.Dev" : "__Host-Leviathan";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+    options.LoginPath = "/api/auth/login";
+    options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = 401; return Task.CompletedTask; };
+    options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = 403; return Task.CompletedTask; };
+});
+builder.Services.AddAuthorization();
+builder.Services.AddAntiforgery(options => { options.HeaderName = "X-CSRF-TOKEN"; options.Cookie.Name = builder.Environment.IsDevelopment() ? "Leviathan.Dev.CSRF" : "__Host-Leviathan-CSRF"; options.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always; options.Cookie.SameSite = SameSiteMode.Strict; });
+builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataRoot, "keys")));
+builder.Services.AddSingleton<LocalFileLeviathanObjectStore>();
+builder.Services.AddSingleton<ILeviathanObjectStore>(sp => string.IsNullOrWhiteSpace(builder.Configuration["LEVIATHAN_S3_BUCKET"])
+    ? sp.GetRequiredService<LocalFileLeviathanObjectStore>()
+    : ActivatorUtilities.CreateInstance<S3LeviathanObjectStore>(sp));
 builder.Services.AddLeviathanObjectStorageActuation();
 builder.Services.AddSingleton<AriadneSessionPersistence>();
 builder.Services.AddSingleton<ILeviathanSessionApp, RustSimulatorAppDefinition>();
 builder.Services.AddSingleton<ILeviathanAppDefinition, RustSimulatorAppDefinition>(sp => (RustSimulatorAppDefinition)sp.GetRequiredService<ILeviathanSessionApp>());
 builder.Services.AddSingleton<ILeviathanAppDefinition, SchedulingAppDefinition>();
+builder.Services.AddSingleton<ILeviathanAppDefinition, HeliosAppDefinition>();
 builder.Services.AddSingleton<SchedulingStore, SchedulingFileStore>();
 builder.Services.AddSingleton<ResourceLockRegistry>();
 builder.Services.AddSingleton<SchedulingBookingRuntime>();
@@ -33,11 +78,43 @@ builder.Services.AddSingleton<AriadneSessionManager>();
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+    if (builder.Environment.IsDevelopment()) options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+    else if (builder.Configuration["LEVIATHAN_ALLOWED_ORIGINS"] is { Length: > 0 } origins)
+        options.AddDefaultPolicy(policy => policy.WithOrigins(origins.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)).AllowAnyHeader().AllowAnyMethod().AllowCredentials());
 });
 
 var app = builder.Build();
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<LeviathanDbContext>();
+    if (string.IsNullOrWhiteSpace(postgres))
+    {
+        db.Database.EnsureCreated(); // local SQLite only; production uses the PostgreSQL migration
+        try { _ = db.ProjectAudits.AsNoTracking().Any(); _ = db.Users.AsNoTracking().Select(x => x.DefaultAccountId).FirstOrDefault(); }
+        catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.SqliteErrorCode == 1)
+        { throw new InvalidOperationException("Local SQLite schema is older than Telos X0. Set a fresh LEVIATHAN_DATA_DIR; preserve the old directory for manual migration if needed.", ex); }
+    }
+    else db.Database.Migrate();
+}
+if (!app.Environment.IsDevelopment()) { app.UseHsts(); app.UseHttpsRedirection(); }
 app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
+app.Use((HttpContext http, RequestDelegate next) => LeviathanAuthenticatedContext.ResolveAsync(http, http.RequestServices.GetRequiredService<LeviathanDbContext>(), next));
+app.MapPlatformAuthEndpoints();
+app.MapProjectEndpoints();
+app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
+app.MapGet("/health/ready", async (LeviathanDbContext db, ILeviathanObjectStore objects, CancellationToken ct) =>
+{
+    try
+    {
+        if (!await db.Database.CanConnectAsync(ct)) return Results.StatusCode(503);
+        await using var listing = objects.ListAsync(new LeviathanObjectKey("health/probe"), ct).GetAsyncEnumerator(ct);
+        await listing.MoveNextAsync();
+        return Results.Ok(new { status = "ready" });
+    }
+    catch { return Results.StatusCode(503); }
+});
 
 app.MapGet("/api/apps", (LeviathanAppRegistry registry) => Results.Ok(registry.Apps));
 app.MapGet("/api/platform/local-dev/context", async (ILeviathanRequestContextAccessor ctx, LeviathanLocalDevAppInstallations installs, ILeviathanCapabilityStore capabilities) => ctx.Current is { } c ? Results.Ok(new { c.ActorKind, UserId = c.UserId.Value, AccountId = c.AccountId.Value, UnsafeLocalDev = c.UnsafeLocalDev, c.RequestId, SchedulingInstallation = installs.Scheduling, CapabilityGrants = await capabilities.GetGrants(c.AccountId) }) : Results.Json(new { error = "unsafe_admin_disabled", message = "Local-dev context is only available when LEVIATHAN_ALLOW_UNSAFE_ADMIN=true." }, statusCode: StatusCodes.Status403Forbidden));

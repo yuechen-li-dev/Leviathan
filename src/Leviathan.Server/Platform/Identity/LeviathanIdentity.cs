@@ -37,6 +37,7 @@ public sealed class LeviathanRequestContextAccessor(IConfiguration config, IHttp
     {
         get
         {
+            if (http.HttpContext?.Items[typeof(LeviathanRequestContext)] is LeviathanRequestContext authenticated) return authenticated;
             if (!LeviathanLocalDevIdentity.UnsafeAdminEnabled(config)) return null;
             var requestId = http.HttpContext?.TraceIdentifier ?? Guid.NewGuid().ToString("n");
             return new(LocalDevActorKind, LocalDevUserId, LocalDevAccountId, true, requestId);

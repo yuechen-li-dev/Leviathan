@@ -30,9 +30,13 @@ public sealed class LocalFileLeviathanObjectStore : ILeviathanObjectStore
             if (options.AtomicReplace)
             {
                 await File.WriteAllBytesAsync(tmp, content, ct);
-                File.Move(tmp, path, overwrite: options.Overwrite || options.IfNotExists);
+                File.Move(tmp, path, overwrite: options.Overwrite && !options.IfNotExists);
             }
             else await File.WriteAllBytesAsync(path, content, ct);
+        }
+        catch (IOException) when (options.IfNotExists && File.Exists(path))
+        {
+            TryDelete(tmp); throw new LeviathanObjectConflictException($"Object '{key}' already exists.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
