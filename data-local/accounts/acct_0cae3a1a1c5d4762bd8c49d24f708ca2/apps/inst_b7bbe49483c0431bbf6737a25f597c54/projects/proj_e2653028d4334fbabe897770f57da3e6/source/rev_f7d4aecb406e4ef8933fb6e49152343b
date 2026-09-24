@@ -1,0 +1,4 @@
+Model TelosReopen {
+    Units: mm
+    Box Body { Size: [30mm, 20mm, 10mm] }
+}

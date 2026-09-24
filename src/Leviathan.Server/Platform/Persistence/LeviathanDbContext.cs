@@ -73,6 +73,22 @@ public sealed class LeviathanProjectAudit
     public DateTimeOffset OccurredAt { get; set; }
 }
 
+public sealed class HeliosPublication
+{
+    public string Id { get; set; } = "";
+    public string ProjectId { get; set; } = "";
+    public string AccountId { get; set; } = "";
+    public string PublishedRevisionId { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string Category { get; set; } = "Mechanical";
+    public string TagsJson { get; set; } = "[]";
+    public string CreatorName { get; set; } = "";
+    public string PreviewObjectKey { get; set; } = "";
+    public string Visibility { get; set; } = "Public";
+    public DateTimeOffset PublishedAt { get; set; }
+}
+
 public sealed class LeviathanDbContext(DbContextOptions<LeviathanDbContext> options) : IdentityDbContext<LeviathanUser>(options)
 {
     public DbSet<LeviathanAccount> Accounts => Set<LeviathanAccount>();
@@ -81,6 +97,7 @@ public sealed class LeviathanDbContext(DbContextOptions<LeviathanDbContext> opti
     public DbSet<LeviathanProject> Projects => Set<LeviathanProject>();
     public DbSet<LeviathanProjectRevision> ProjectRevisions => Set<LeviathanProjectRevision>();
     public DbSet<LeviathanProjectAudit> ProjectAudits => Set<LeviathanProjectAudit>();
+    public DbSet<HeliosPublication> HeliosPublications => Set<HeliosPublication>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -92,5 +109,6 @@ public sealed class LeviathanDbContext(DbContextOptions<LeviathanDbContext> opti
         model.Entity<LeviathanProject>(b => { b.HasKey(x => x.Id); b.HasIndex(x => new { x.AccountId, x.AppInstallationId, x.Status }); b.Property(x => x.Name).HasMaxLength(160); b.Property(x => x.Status).HasMaxLength(24); b.HasOne<LeviathanAccount>().WithMany().HasForeignKey(x => x.AccountId); b.HasOne<LeviathanInstallation>().WithMany().HasForeignKey(x => x.AppInstallationId); });
         model.Entity<LeviathanProjectRevision>(b => { b.HasKey(x => x.Id); b.HasIndex(x => x.ProjectId); b.Property(x => x.ContentHash).HasMaxLength(64); b.HasOne<LeviathanProject>().WithMany().HasForeignKey(x => x.ProjectId); });
         model.Entity<LeviathanProjectAudit>(b => { b.HasKey(x => x.Id); b.HasIndex(x => new { x.AccountId, x.OccurredAt }); b.Property(x => x.Operation).HasMaxLength(24); b.Property(x => x.Result).HasMaxLength(24); });
+        model.Entity<HeliosPublication>(b => { b.HasKey(x => x.Id); b.HasIndex(x => x.ProjectId).IsUnique(); b.HasIndex(x => new { x.Visibility, x.PublishedAt }); b.Property(x => x.Title).HasMaxLength(160); b.Property(x => x.Description).HasMaxLength(2000); b.Property(x => x.Category).HasMaxLength(40); b.Property(x => x.CreatorName).HasMaxLength(120); b.Property(x => x.Visibility).HasMaxLength(16); b.HasOne<LeviathanProject>().WithMany().HasForeignKey(x => x.ProjectId); b.HasOne<LeviathanProjectRevision>().WithMany().HasForeignKey(x => x.PublishedRevisionId).OnDelete(DeleteBehavior.Restrict); });
     }
 }

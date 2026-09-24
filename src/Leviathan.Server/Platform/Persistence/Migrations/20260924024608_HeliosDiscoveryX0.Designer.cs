@@ -3,6 +3,7 @@ using System;
 using Leviathan.Server.Platform.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Leviathan.Server.Platform.Persistence.Migrations
 {
     [DbContext(typeof(LeviathanDbContext))]
-    partial class LeviathanDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260924024608_HeliosDiscoveryX0")]
+    partial class HeliosDiscoveryX0
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

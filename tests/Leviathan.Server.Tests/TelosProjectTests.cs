@@ -10,6 +10,58 @@ namespace Leviathan.Server.Tests;
 public sealed class TelosProjectTests
 {
     [Fact]
+    public async Task Published_revision_is_public_and_immutable_while_private_projects_remain_isolated()
+    {
+        var dataDir = Path.Combine(Path.GetTempPath(), "leviathan-discovery-tests", Guid.NewGuid().ToString("n"));
+        const string published = "Model Published { Units: mm Box Body { Size: [10mm, 10mm, 10mm] } }";
+        const string privateSource = "private next revision";
+        const string png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==";
+        try
+        {
+            using var server = new TelosFactory(dataDir);
+            using var anonymous = server.CreateClient();
+            Assert.Empty((await anonymous.GetFromJsonAsync<JsonElement[]>("/api/helios/publications", TestContext.Current.CancellationToken))!);
+            using var owner = server.CreateClient();
+            var token = await Csrf(owner);
+            Assert.Equal(HttpStatusCode.OK, (await Post(owner, "/api/auth/register", new { email = "publisher@example.test", password = "Publisher-Password-2026!", displayName = "Publisher" }, token)).StatusCode);
+            token = await Csrf(owner);
+            var created = await Post(owner, "/api/projects", new { appId = "helios", name = "Published box", source = published }, token);
+            Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+            using var createdJson = await Body(created);
+            var projectId = createdJson.RootElement.GetProperty("id").GetString()!;
+            var revisionId = createdJson.RootElement.GetProperty("revisionId").GetString()!;
+            Assert.Equal(HttpStatusCode.NotFound, (await Post(owner, $"/api/projects/{projectId}/publish", new { expectedRevisionId = "wrong", title = "Box", description = "Public", category = "Mechanical", tags = new[] { "box" }, previewPngBase64 = png }, token)).StatusCode);
+            var publishedResponse = await Post(owner, $"/api/projects/{projectId}/publish", new { expectedRevisionId = revisionId, title = "Box", description = "Public", category = "Mechanical", tags = new[] { "box" }, previewPngBase64 = png }, token);
+            Assert.Equal(HttpStatusCode.OK, publishedResponse.StatusCode);
+            using var publishedJson = await Body(publishedResponse);
+            var publicId = publishedJson.RootElement.GetProperty("id").GetString()!;
+            Assert.DoesNotContain(projectId, await anonymous.GetStringAsync("/api/helios/publications", TestContext.Current.CancellationToken));
+            var detail = await anonymous.GetFromJsonAsync<JsonElement>($"/api/helios/publications/{publicId}", TestContext.Current.CancellationToken);
+            Assert.Equal(published, detail.GetProperty("source").GetString());
+            Assert.Equal(revisionId, detail.GetProperty("publishedRevisionId").GetString());
+            Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync($"/api/helios/publications/{publicId}/preview", TestContext.Current.CancellationToken)).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync($"/api/projects/{projectId}", TestContext.Current.CancellationToken)).StatusCode);
+            var saved = await Put(owner, $"/api/projects/{projectId}", new { expectedRevisionId = revisionId, source = privateSource }, token);
+            Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+            var unchanged = await anonymous.GetFromJsonAsync<JsonElement>($"/api/helios/publications/{publicId}", TestContext.Current.CancellationToken);
+            Assert.Equal(published, unchanged.GetProperty("source").GetString());
+            Assert.DoesNotContain(privateSource, await anonymous.GetStringAsync("/api/helios/publications", TestContext.Current.CancellationToken));
+            using var other = server.CreateClient();
+            var otherToken = await Csrf(other);
+            Assert.Equal(HttpStatusCode.OK, (await Post(other, "/api/auth/register", new { email = "forker@example.test", password = "Forker-Password-2026!", displayName = "Forker" }, otherToken)).StatusCode);
+            otherToken = await Csrf(other);
+            Assert.Equal(HttpStatusCode.NotFound, (await Post(other, $"/api/projects/{projectId}/publish", new { expectedRevisionId = revisionId, title = "Stolen", previewPngBase64 = png }, otherToken)).StatusCode);
+            var forked = await Post(other, $"/api/helios/publications/{publicId}/fork", new { }, otherToken);
+            Assert.Equal(HttpStatusCode.Created, forked.StatusCode);
+            using var forkedJson = await Body(forked);
+            Assert.Equal(published, forkedJson.RootElement.GetProperty("source").GetString());
+            Assert.NotEqual(projectId, forkedJson.RootElement.GetProperty("id").GetString());
+            Assert.Equal(HttpStatusCode.NoContent, (await Delete(owner, $"/api/projects/{projectId}", token)).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await anonymous.GetAsync($"/api/helios/publications/{publicId}", TestContext.Current.CancellationToken)).StatusCode);
+        }
+        finally { SqliteConnection.ClearAllPools(); if (Directory.Exists(dataDir)) Directory.Delete(dataDir, recursive: true); }
+    }
+    [Fact]
     public async Task Authenticated_project_survives_restart_and_rejects_stale_and_other_account_access()
     {
         var dataDir = Path.Combine(Path.GetTempPath(), "leviathan-telos-tests", Guid.NewGuid().ToString("n"));

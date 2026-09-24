@@ -99,6 +99,8 @@ public static class ProjectEndpoints
         if (membership?.Role != "Owner") return Results.Forbid();
         project.Status = "deleted";
         project.UpdatedAt = DateTimeOffset.UtcNow;
+        var publication = await db.HeliosPublications.SingleOrDefaultAsync(x => x.ProjectId == id, ct);
+        if (publication is not null) publication.Visibility = "Private";
         db.ProjectAudits.Add(Audit(actor, project, project.CurrentRevisionId, "deleted"));
         await db.SaveChangesAsync(ct);
         loggerFactory.CreateLogger("Leviathan.ProjectAudit").LogInformation("ProjectDeleted request={RequestId} actor={Actor} account={Account} installation={Installation} project={Project} revision={Revision}", actor.RequestId, actor.UserId.Value, actor.AccountId.Value, project.AppInstallationId, project.Id, project.CurrentRevisionId);

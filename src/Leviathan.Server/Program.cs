@@ -103,6 +103,7 @@ app.UseAuthorization();
 app.Use((HttpContext http, RequestDelegate next) => LeviathanAuthenticatedContext.ResolveAsync(http, http.RequestServices.GetRequiredService<LeviathanDbContext>(), next));
 app.MapPlatformAuthEndpoints();
 app.MapProjectEndpoints();
+app.MapHeliosPublicationEndpoints();
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/health/ready", async (LeviathanDbContext db, ILeviathanObjectStore objects, CancellationToken ct) =>
 {

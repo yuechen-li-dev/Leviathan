@@ -1,0 +1,5 @@
+Model Witness {
+  Units: mm
+  Box Body { Size: [30mm, 20mm, 10mm] }
+  Modify Body { Hole<Shaft> H { On: +Z Center: Point2(0mm, 0mm) Diameter: 12mm /* keep */ End: ThroughAll } }
+}
