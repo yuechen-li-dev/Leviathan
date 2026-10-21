@@ -1,5 +1,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
+# Build with: docker build --build-context dominatus=../Dominatus .
+# Dominatus is a source dependency until the conversation API package is published.
+COPY --from=dominatus /src /Dominatus/src
+COPY --from=dominatus /README.md /Dominatus/README.md
 COPY global.json ./
 COPY src/Leviathan.Server/Leviathan.Server.csproj src/Leviathan.Server/
 RUN dotnet restore src/Leviathan.Server/Leviathan.Server.csproj

@@ -70,6 +70,9 @@ builder.Services.AddSingleton<BookingClaimService>();
 builder.Services.AddSingleton<SlotGenerator>();
 builder.Services.AddSingleton<LeviathanAppRegistry>();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient("helios-openai", client => client.Timeout = TimeSpan.FromMinutes(5));
+builder.Services.AddHttpClient("helios-anthropic", client => client.Timeout = TimeSpan.FromMinutes(5));
+builder.Services.AddHttpClient("helios-gemini", client => client.Timeout = TimeSpan.FromMinutes(5));
 builder.Services.AddSingleton<ILeviathanRequestContextAccessor, LeviathanRequestContextAccessor>();
 builder.Services.AddSingleton<LeviathanLocalDevAppInstallations>();
 builder.Services.AddSingleton<ILeviathanCapabilityStore, LeviathanLocalCapabilityStore>();
@@ -104,6 +107,7 @@ app.Use((HttpContext http, RequestDelegate next) => LeviathanAuthenticatedContex
 app.MapPlatformAuthEndpoints();
 app.MapProjectEndpoints();
 app.MapHeliosPublicationEndpoints();
+app.MapHeliosAuthorEndpoints();
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/health/ready", async (LeviathanDbContext db, ILeviathanObjectStore objects, CancellationToken ct) =>
 {

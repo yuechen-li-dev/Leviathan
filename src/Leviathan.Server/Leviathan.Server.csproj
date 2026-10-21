@@ -3,13 +3,19 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Source-workspace integration until the conversation API is published. -->
+    <DominatusSourceRoot Condition="'$(DominatusSourceRoot)' == ''">$(MSBuildThisFileDirectory)../../../Dominatus</DominatusSourceRoot>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="4.0.103.3" />
-    <PackageReference Include="Dominatus.Core" Version="0.3.0" />
-    <PackageReference Include="Dominatus.OptFlow" Version="0.3.0" />
-    <PackageReference Include="Ariadne.OptFlow" Version="0.3.0" />
+    <ProjectReference Include="$(DominatusSourceRoot)/src/Dominatus.Core/Dominatus.Core.csproj" />
+    <ProjectReference Include="$(DominatusSourceRoot)/src/Dominatus.OptFlow/Dominatus.OptFlow.csproj" />
+    <ProjectReference Include="$(DominatusSourceRoot)/src/Ariadne.OptFlow/Ariadne.OptFlow.csproj" />
+    <ProjectReference Include="$(DominatusSourceRoot)/src/Dominatus.Llm.OptFlow/Dominatus.Llm.OptFlow.csproj" />
+    <ProjectReference Include="$(DominatusSourceRoot)/src/Dominatus.Actuators.SemanticKernel/Dominatus.Actuators.SemanticKernel.csproj" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.3.0" />
+    <PackageReference Include="PdfPig" Version="0.1.13" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
@@ -18,7 +24,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- TODO(M1b): Replace this temporary linked source when RustSimulator is published in a host-neutral Ariadne package. NuGet has Dominatus.Core/Dominatus.OptFlow/Ariadne.OptFlow 0.3.0, but no Ariadne.Console or Ariadne.ConsoleApp package. -->
+    <!-- Retained legacy sample script only; the runtime and LLM dependencies above
+         come from the maintained Dominatus source workspace. -->
     <Compile Include="../../vendor/Dominatus/src/Ariadne.Console/Scripts/RustSimulator.cs" Link="Ariadne/VendoredReference/RustSimulator.cs" />
   </ItemGroup>
+  <Target Name="RequireDominatusConversationSource" BeforeTargets="PrepareForBuild"
+          Condition="!Exists('$(DominatusSourceRoot)/src/Dominatus.Llm.OptFlow/LlmConversation.cs')">
+    <Error Text="Current Dominatus conversation sources are required. Check out the matching Dominatus changes beside Leviathan or set DominatusSourceRoot explicitly; the vendored snapshot is not a fallback runtime." />
+  </Target>
 </Project>
