@@ -122,13 +122,14 @@ if (desktop is null && !app.Environment.IsDevelopment()) { app.UseHsts(); app.Us
 desktop?.Guard(app);
 app.UseCors();
 app.UseAuthentication();
+DesktopAuthorConnections.UseAuthorization(app);
 if (desktop is not null) app.Use(async (http, next) => {
-    if (http.Request.Path.StartsWithSegments("/api") && http.Request.Path != "/api/auth/csrf" && http.User.Identity?.IsAuthenticated != true) {
+    if (http.Request.Path.StartsWithSegments("/api") && http.Request.Path != "/api/auth/csrf"
+        && http.User.Identity?.IsAuthenticated != true && http.Items[typeof(DesktopAuthorConnections.Pairing)] is null) {
         http.Response.StatusCode = 401; return;
     }
     await next();
 });
-DesktopAuthorConnections.UseAuthorization(app);
 app.UseWebSockets();
 app.UseAuthorization();
 app.Use((HttpContext http, RequestDelegate next) => LeviathanAuthenticatedContext.ResolveAsync(http, http.RequestServices.GetRequiredService<LeviathanDbContext>(), next));
