@@ -12,6 +12,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../Leviathan.AgentPeer/Leviathan.AgentPeer.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../src/Leviathan.Server/Leviathan.Server.csproj" />
   </ItemGroup>
 </Project>

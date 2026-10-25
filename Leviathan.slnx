@@ -3,6 +3,7 @@
     <Project Path="src/Leviathan.Server/Leviathan.Server.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Leviathan.AgentPeer/Leviathan.AgentPeer.csproj" />
     <Project Path="tests/Leviathan.Server.Tests/Leviathan.Server.Tests.csproj" />
   </Folder>
 </Solution>
