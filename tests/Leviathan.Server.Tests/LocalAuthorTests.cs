@@ -34,7 +34,7 @@ public sealed class LocalAuthorTests
         } finally { Directory.Delete(directory, true); }
     }
 
-    private sealed class Peer : IDisposable
+    private sealed class Peer : IAsyncDisposable
     {
         public string Directory { get; } = Temporary();
         public string Executable => Path.Combine(Directory, "Leviathan.AgentPeer" + (OperatingSystem.IsWindows() ? ".exe" : ""));
@@ -50,7 +50,17 @@ public sealed class LocalAuthorTests
             var id = int.Parse(File.ReadAllText(Path.Combine(Directory, "peer.pid")));
             try { using var process = Process.GetProcessById(id); Assert.True(process.HasExited); } catch (ArgumentException) { }
         }
-        public void Dispose() => System.IO.Directory.Delete(Directory, true);
+        public async ValueTask DisposeAsync()
+        {
+            // Windows image/scanner handles can briefly outlive process exit.
+            // Reaped() still proves shutdown; only temporary file cleanup retries.
+            for (var attempt = 0; ; attempt++) {
+                try { System.IO.Directory.Delete(Directory, true); return; }
+                catch (Exception error) when (OperatingSystem.IsWindows() && attempt < 9 && (error is IOException or UnauthorizedAccessException)) {
+                    await Task.Delay(TimeSpan.FromMilliseconds(50 * (attempt + 1)));
+                }
+            }
+        }
     }
     private sealed class Channel : IAuthorAgentChannel
     {
@@ -62,7 +72,7 @@ public sealed class LocalAuthorTests
     [Fact]
     public async Task Codex_process_authentication_tool_roundtrip_and_completion_are_real_and_reaped()
     {
-        using var peer = new Peer(); var agent = new CodexAuthorAgent(); var ct = TestContext.Current.CancellationToken;
+        await using var peer = new Peer(); var agent = new CodexAuthorAgent(); var ct = TestContext.Current.CancellationToken;
         var probe = await agent.Probe(peer.Executable, ct); Assert.True(probe.Connected); Assert.Equal("fixture-model", probe.Models.Single().Id); peer.Reaped();
         var channel = new Channel();
         await agent.Run(peer.Executable, "fixture-model", "Keep geometry", "Revise width", HeliosAuthorEndpoints.Tools, channel, ct);
@@ -73,9 +83,9 @@ public sealed class LocalAuthorTests
     public async Task Api_key_accounts_and_failed_turns_never_report_success()
     {
         var agent = new CodexAuthorAgent(); var ct = TestContext.Current.CancellationToken;
-        using (var peer = new Peer("apikey")) { await Assert.ThrowsAsync<LocalAiException>(() => agent.Probe(peer.Executable, ct)); peer.Reaped(); }
-        using (var peer = new Peer("custom-api-route")) { await Assert.ThrowsAsync<LocalAiException>(() => agent.Probe(peer.Executable, ct)); peer.Reaped(); }
-        using (var peer = new Peer("failed")) {
+        await using (var peer = new Peer("apikey")) { await Assert.ThrowsAsync<LocalAiException>(() => agent.Probe(peer.Executable, ct)); peer.Reaped(); }
+        await using (var peer = new Peer("custom-api-route")) { await Assert.ThrowsAsync<LocalAiException>(() => agent.Probe(peer.Executable, ct)); peer.Reaped(); }
+        await using (var peer = new Peer("failed")) {
             var channel = new Channel();
             var error = await Assert.ThrowsAsync<LocalAiException>(() => agent.Run(peer.Executable, "fixture-model", "", "", HeliosAuthorEndpoints.Tools, channel, ct));
             Assert.DoesNotContain("fixture-secret", error.Message); Assert.DoesNotContain(channel.Events, e => e.GetProperty("type").GetString() == "complete"); peer.Reaped();
@@ -84,7 +94,7 @@ public sealed class LocalAuthorTests
     [Fact]
     public async Task Cancelling_a_waiting_model_reaps_the_child()
     {
-        using var peer = new Peer("hold"); using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        await using var peer = new Peer("hold"); using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(2));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new CodexAuthorAgent().Run(peer.Executable, "fixture-model", "", "", HeliosAuthorEndpoints.Tools, new Channel(), timeout.Token));
         peer.Reaped();
