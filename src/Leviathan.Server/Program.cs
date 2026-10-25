@@ -16,17 +16,35 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using System.Text.Json.Serialization;
+using Leviathan.Server.Desktop;
 
-var builder = WebApplication.CreateBuilder(args);
+if (args.Contains(DesktopMcpStdio.Flag, StringComparer.Ordinal)) { Environment.ExitCode = await DesktopMcpStdio.Run(args); return; }
+HeliosDesktopLaunch? launch;
+try { launch = HeliosDesktopLaunch.TryCreate(args); }
+catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException) {
+    Console.Error.WriteLine($"Helios could not start: {exception.Message}"); Environment.ExitCode = 1; return;
+}
+using var desktop = launch;
+if (desktop?.AlreadyRunning == true) return;
+var builder = WebApplication.CreateBuilder(desktop is null ? new WebApplicationOptions { Args = args } : new WebApplicationOptions {
+    Args = [], ContentRootPath = AppContext.BaseDirectory, EnvironmentName = "Production"
+});
+desktop?.Configure(builder);
+var localAi = new HeliosLocalAi(builder.Configuration);
+localAi.ValidateBinding();
+builder.Services.AddSingleton(localAi);
+builder.Services.AddSingleton<ILocalAuthorAgent, CodexAuthorAgent>();
+builder.Services.AddSingleton<LocalAuthorTickets>();
+DesktopAuthorConnections.AddServices(builder.Services);
 SQLitePCL.Batteries_V2.Init();
 if (!builder.Environment.IsDevelopment() && LeviathanLocalDevIdentity.UnsafeAdminEnabled(builder.Configuration))
     throw new InvalidOperationException("LEVIATHAN_ALLOW_UNSAFE_ADMIN is forbidden outside Development.");
 var dataRoot = Path.GetFullPath(builder.Configuration["LEVIATHAN_DATA_DIR"] ?? Path.Combine(builder.Environment.ContentRootPath, "data"));
 Directory.CreateDirectory(dataRoot);
 var postgres = builder.Configuration["LEVIATHAN_POSTGRES_CONNECTION"];
-if (!builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(postgres))
+if (desktop is null && !builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(postgres))
     throw new InvalidOperationException("LEVIATHAN_POSTGRES_CONNECTION is required outside Development.");
-if (!builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(builder.Configuration["LEVIATHAN_S3_BUCKET"]))
+if (desktop is null && !builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(builder.Configuration["LEVIATHAN_S3_BUCKET"]))
     throw new InvalidOperationException("LEVIATHAN_S3_BUCKET and S3 configuration are required outside Development.");
 builder.Services.AddDbContext<LeviathanDbContext>(options =>
 {
@@ -42,16 +60,16 @@ builder.Services.AddIdentity<LeviathanUser, IdentityRole>(options =>
 }).AddEntityFrameworkStores<LeviathanDbContext>().AddDefaultTokenProviders();
 builder.Services.ConfigureApplicationCookie(options =>
 {
-    options.Cookie.Name = builder.Environment.IsDevelopment() ? "Leviathan.Dev" : "__Host-Leviathan";
+    options.Cookie.Name = desktop is not null ? "Helios.Local" : builder.Environment.IsDevelopment() ? "Leviathan.Dev" : "__Host-Leviathan";
     options.Cookie.HttpOnly = true;
     options.Cookie.SameSite = SameSiteMode.Lax;
-    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+    options.Cookie.SecurePolicy = desktop is not null || builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
     options.LoginPath = "/api/auth/login";
     options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = 401; return Task.CompletedTask; };
     options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = 403; return Task.CompletedTask; };
 });
 builder.Services.AddAuthorization();
-builder.Services.AddAntiforgery(options => { options.HeaderName = "X-CSRF-TOKEN"; options.Cookie.Name = builder.Environment.IsDevelopment() ? "Leviathan.Dev.CSRF" : "__Host-Leviathan-CSRF"; options.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always; options.Cookie.SameSite = SameSiteMode.Strict; });
+builder.Services.AddAntiforgery(options => { options.HeaderName = "X-CSRF-TOKEN"; options.Cookie.Name = desktop is not null ? "Helios.Local.CSRF" : builder.Environment.IsDevelopment() ? "Leviathan.Dev.CSRF" : "__Host-Leviathan-CSRF"; options.Cookie.SecurePolicy = desktop is not null || builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always; options.Cookie.SameSite = SameSiteMode.Strict; });
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataRoot, "keys")));
 builder.Services.AddSingleton<LocalFileLeviathanObjectStore>();
 builder.Services.AddSingleton<ILeviathanObjectStore>(sp => string.IsNullOrWhiteSpace(builder.Configuration["LEVIATHAN_S3_BUCKET"])
@@ -86,7 +104,7 @@ builder.Services.AddCors(options =>
         options.AddDefaultPolicy(policy => policy.WithOrigins(origins.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)).AllowAnyHeader().AllowAnyMethod().AllowCredentials());
 });
 
-var app = builder.Build();
+await using var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<LeviathanDbContext>();
@@ -99,15 +117,26 @@ using (var scope = app.Services.CreateScope())
     }
     else db.Database.Migrate();
 }
-if (!app.Environment.IsDevelopment()) { app.UseHsts(); app.UseHttpsRedirection(); }
+if (desktop is not null) await desktop.Initialize(app);
+if (desktop is null && !app.Environment.IsDevelopment()) { app.UseHsts(); app.UseHttpsRedirection(); }
+desktop?.Guard(app);
 app.UseCors();
 app.UseAuthentication();
+if (desktop is not null) app.Use(async (http, next) => {
+    if (http.Request.Path.StartsWithSegments("/api") && http.Request.Path != "/api/auth/csrf" && http.User.Identity?.IsAuthenticated != true) {
+        http.Response.StatusCode = 401; return;
+    }
+    await next();
+});
+DesktopAuthorConnections.UseAuthorization(app);
+app.UseWebSockets();
 app.UseAuthorization();
 app.Use((HttpContext http, RequestDelegate next) => LeviathanAuthenticatedContext.ResolveAsync(http, http.RequestServices.GetRequiredService<LeviathanDbContext>(), next));
 app.MapPlatformAuthEndpoints();
 app.MapProjectEndpoints();
 app.MapHeliosPublicationEndpoints();
 app.MapHeliosAuthorEndpoints();
+desktop?.Map(app);
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/health/ready", async (LeviathanDbContext db, ILeviathanObjectStore objects, CancellationToken ct) =>
 {
@@ -152,7 +181,19 @@ app.MapPost("/api/ariadne/sessions/{sessionId}/choose", (string sessionId, Choos
 app.MapPost("/api/ariadne/sessions/{sessionId}/input", (string sessionId, InputPromptRequest request, AriadneSessionManager manager) =>
     Submit("rust_simulator", sessionId, manager, session => session.Input(request.PromptId, request.Revision, request.Text)));
 
-app.Run();
+if (desktop is null) app.Run();
+else {
+    try {
+        await app.StartAsync();
+        desktop.Ready();
+        await app.WaitForShutdownAsync();
+    }
+    catch (Exception exception) {
+        app.Logger.LogError(exception, "Helios desktop host stopped unexpectedly");
+        Console.Error.WriteLine($"Helios could not start or continue. Check whether port {desktop.Port} is occupied. Details: {Path.Combine(desktop.DataRoot, "logs", "helios.log")}");
+        Environment.ExitCode = 1;
+    }
+}
 
 static IResult CreateSession(string appId, AriadneSessionManager manager)
 {
