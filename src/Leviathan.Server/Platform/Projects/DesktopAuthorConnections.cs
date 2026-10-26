@@ -99,6 +99,38 @@ public sealed class DesktopAuthorConnections
         }
     }
 
+    /// <summary>The tools advertised by tools/list; tools/call checks arguments against these same schemas.</summary>
+    internal static List<Tool> McpTools() =>
+        HeliosAuthorEndpoints.AuthorTools().Select(t => new Tool { Name = t.GetProperty("name").GetString()!, Description = t.GetProperty("description").GetString(), InputSchema = t.GetProperty("parameters") })
+            .Concat(new[] {
+                    new Tool { Name = "task_context", Description = "Read the active Helios task, requirements and workflow before using candidate tools.", InputSchema = JsonSerializer.SerializeToElement(new { type = "object", properties = new { }, additionalProperties = false }) },
+                    new Tool { Name = "finish_task", Description = "Submit the successfully built candidate to Helios. The host owns the final apply/review transaction.", InputSchema = JsonSerializer.SerializeToElement(new { type = "object", properties = new { summary = new { type = "string" } }, required = new[] { "summary" }, additionalProperties = false }) }
+            }).ToList();
+
+    /// <summary>
+    /// A client-facing reason the arguments do not match the advertised schema, or null when they do.
+    /// Names the tool and the accepted fields so an agent can correct the call instead of guessing.
+    /// </summary>
+    internal static string? ArgumentError(string name, IDictionary<string, JsonElement> arguments)
+    {
+        var tool = McpTools().FirstOrDefault(t => t.Name == name);
+        if (tool is null) return $"Unknown tool '{name}'. Call tools/list for the available tools.";
+        var schema = tool.InputSchema;
+        var properties = schema.TryGetProperty("properties", out var p) && p.ValueKind == JsonValueKind.Object
+            ? p.EnumerateObject().ToDictionary(x => x.Name, x => x.Value) : new Dictionary<string, JsonElement>();
+        var accepted = properties.Count == 0 ? "no arguments" : string.Join(", ", properties.Keys);
+        var closed = schema.TryGetProperty("additionalProperties", out var a) && a.ValueKind == JsonValueKind.False;
+        var unknown = closed ? arguments.Keys.Where(k => !properties.ContainsKey(k)).Order(StringComparer.Ordinal).ToArray() : [];
+        if (unknown.Length > 0) return $"{name} does not accept {string.Join(", ", unknown.Select(k => $"'{k}'"))}. Accepted: {accepted}.";
+        var missing = schema.TryGetProperty("required", out var r) && r.ValueKind == JsonValueKind.Array
+            ? r.EnumerateArray().Select(x => x.GetString()!).Where(k => !arguments.ContainsKey(k)).ToArray() : [];
+        if (missing.Length > 0) return $"{name} requires {string.Join(", ", missing.Select(k => $"'{k}'"))}. Accepted: {accepted}.";
+        foreach (var (key, value) in arguments)
+            if (properties.TryGetValue(key, out var field) && field.TryGetProperty("type", out var type) && type.GetString() == "string" && value.ValueKind != JsonValueKind.String)
+                return $"{name}: '{key}' must be a string.";
+        return null;
+    }
+
     private static CallToolResult Result(bool ok, object result) => new() { IsError = !ok,
         Content = [new TextContentBlock { Text = JsonSerializer.Serialize(new { ok, result }) }] };
 
@@ -107,19 +139,16 @@ public sealed class DesktopAuthorConnections
         services.AddSingleton<DesktopAuthorConnections>();
         services.AddMcpServer(options => options.ServerInfo = new() { Name = "helios", Version = "2.0.0" })
             .WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateless)
-            .WithListToolsHandler((context, ct) => ValueTask.FromResult(new ListToolsResult { Tools =
-                HeliosAuthorEndpoints.AuthorTools().Select(t => new Tool { Name = t.GetProperty("name").GetString()!, Description = t.GetProperty("description").GetString(), InputSchema = t.GetProperty("parameters") })
-                .Concat(new[] {
-                    new Tool { Name = "task_context", Description = "Read the active Helios task, requirements and workflow before using candidate tools.", InputSchema = JsonSerializer.SerializeToElement(new { type = "object", properties = new { }, additionalProperties = false }) },
-                    new Tool { Name = "finish_task", Description = "Submit the successfully built candidate to Helios. The host owns the final apply/review transaction.", InputSchema = JsonSerializer.SerializeToElement(new { type = "object", properties = new { summary = new { type = "string" } }, required = new[] { "summary" }, additionalProperties = false }) }
-                }).ToList() }))
+            .WithListToolsHandler((context, ct) => ValueTask.FromResult(new ListToolsResult { Tools = McpTools() }))
             .WithCallToolHandler(async (context, ct) => {
                 var http = context.Services!.GetRequiredService<IHttpContextAccessor>().HttpContext;
                 var pairing = http?.Items[typeof(Pairing)] as Pairing;
                 var task = pairing?.Active;
                 if (task is null) return Result(false, "No active Helios candidate. Start a desktop task in the Helios AI Author panel.");
                 var parameters = context.Params!;
-                return await task.Invoke(parameters.Name, JsonSerializer.SerializeToElement(parameters.Arguments ?? new Dictionary<string, JsonElement>()), ct);
+                var arguments = parameters.Arguments ?? new Dictionary<string, JsonElement>();
+                if (ArgumentError(parameters.Name, arguments) is { } problem) return Result(false, problem);
+                return await task.Invoke(parameters.Name, JsonSerializer.SerializeToElement(arguments), ct);
             });
     }
 

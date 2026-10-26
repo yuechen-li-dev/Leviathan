@@ -64,4 +64,26 @@ public sealed class DesktopAuthorTests
             Assert.True((await candidate.Invoke("build", JsonSerializer.SerializeToElement(new { }), ct)).IsError);
         } finally { candidate.Close(); }
     }
+    [Fact]
+    public void Tool_arguments_are_checked_against_the_advertised_schema()
+    {
+        static Dictionary<string, JsonElement> Args(object value) =>
+            JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(JsonSerializer.Serialize(value))!;
+        Assert.Null(DesktopAuthorConnections.ArgumentError("read_file", Args(new { path = "part.firmament" })));
+        Assert.Null(DesktopAuthorConnections.ArgumentError("task_context", Args(new { })));
+        Assert.Equal("read_file does not accept 'name'. Accepted: path.",
+            DesktopAuthorConnections.ArgumentError("read_file", Args(new { name = "part.firmament" })));
+        Assert.Equal("edit_file requires 'before', 'after'. Accepted: path, before, after.",
+            DesktopAuthorConnections.ArgumentError("edit_file", Args(new { path = "part.firmament" })));
+        Assert.Equal("finish_task: 'summary' must be a string.",
+            DesktopAuthorConnections.ArgumentError("finish_task", Args(new { summary = 3 })));
+        Assert.Equal("Unknown tool 'write_file'. Call tools/list for the available tools.",
+            DesktopAuthorConnections.ArgumentError("write_file", Args(new { })));
+        // Every advertised tool accepts exactly its declared required fields.
+        foreach (var tool in DesktopAuthorConnections.McpTools())
+        {
+            var required = tool.InputSchema.TryGetProperty("required", out var r) ? r.EnumerateArray().Select(x => x.GetString()!).ToArray() : [];
+            Assert.Null(DesktopAuthorConnections.ArgumentError(tool.Name, required.ToDictionary(k => k, _ => JsonSerializer.SerializeToElement("x"))));
+        }
+    }
 }
