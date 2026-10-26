@@ -9,7 +9,7 @@ namespace Leviathan.Server.Platform.Projects;
 
 public sealed record HeliosAuthorRequest(string Model, string Root, string[] Documents,
     string Requirements, JsonElement[] Input, Dictionary<string, string>? DocumentHashes = null, string[]? ReferenceIds = null,
-    string Agent = "codex", string? PairingToken = null);
+    string Agent = "codex", string? PairingToken = null, string? ApplyMode = null, int? BudgetMinutes = null);
 public sealed record HeliosAuthorModel(string Id, string Label);
 public sealed record HeliosAuthorProvider(string Id, string Label, string CredentialVariable, HeliosAuthorModel[] Models);
 
@@ -26,11 +26,12 @@ public static class HeliosAuthorEndpoints
     public static readonly string[] Models = Providers.SelectMany(p => p.Models.Select(m => m.Id)).ToArray();
     public static readonly JsonElement[] Tools =
     [
-        Tool("read_file", "Read a project file by its exact document name.", "path"),
-        Tool("edit_file", "Replace one unique exact source occurrence. For a new file use empty before; after contains the new source. All edits affect an isolated candidate.", "path", "before", "after"),
-        Tool("outline", "Get the compiler's structural outline and diagnostics for one candidate file.", "path"),
-        Tool("schema", "Get the compiler's authoring schema."),
-        Tool("build", "Build the entire candidate project. Inspect diagnostics and fix failures before claiming success."),
+        Tool("read_file", "Read a project file by its exact document name (task_context lists them).", "path"),
+        Tool("edit_file", "Replace one unique exact source occurrence. For a new file use empty before; after contains the new source. All edits affect an isolated candidate. Returns syntax diagnostics for the edited file.", "path", "before", "after"),
+        Tool("outline", "List one candidate file's declarations (id, kind, line, fields) and its diagnostics.", "path"),
+        Tool("schema", "List the compiler's constructs: name, where it goes, a one-line example and what it does. Includes the measurement request format."),
+        Tool("describe_construct", "Get every field of one construct from schema: kind, unit, required, choices and meaning.", "name"),
+        Tool("build", "Build the entire candidate project. Returns diagnostics, bounds, bodies with their features, faces and parameters. Fix failures, and check every requested feature is present, before claiming success."),
         Tool("measure", "Query the last successful candidate build. request is JSON in the SDK MeasurementRequest format supplied in schema.", "request")
     ];
     internal const string Instructions = """

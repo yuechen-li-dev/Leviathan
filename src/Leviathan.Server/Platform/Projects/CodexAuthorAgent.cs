@@ -8,6 +8,8 @@ public interface IAuthorAgentChannel
 {
     Task Event(object value, CancellationToken ct);
     Task<JsonElement> Invoke(string name, JsonElement arguments, CancellationToken ct);
+    /// <summary>Why the host stopped the task, when it said so (time budget, Stop agent, source changed).</summary>
+    string? EndReason => null;
 }
 public interface ILocalAuthorAgent
 {

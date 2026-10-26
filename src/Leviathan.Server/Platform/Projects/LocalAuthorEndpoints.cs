@@ -85,6 +85,11 @@ public static class LocalAuthorEndpoints
                     message = "Pairing ready. Add this MCP configuration in your native client. Account and model selection stay there. Access is limited to an active Helios task; pairing expires in eight hours." });
             } catch (LocalAiException ex) { return Results.Json(new { error = "author_pairing_failed", message = ex.Message }, statusCode: 503); }
         }).AddEndpointFilter<LeviathanCsrfFilter>();
+        group.MapPost("/pairing-status", async (DesktopUnpairRequest request, HttpContext http, HeliosLocalAi local, LeviathanDbContext db, DesktopAuthorConnections connections, CancellationToken ct) => {
+            var actor = await Actor(http, local, db, ct); if (actor is null) return Results.Forbid();
+            // Whether the native client has reached the MCP endpoint, so Helios can show it as connected.
+            return connections.Status(request.Token ?? "", actor.UserId.Value) is { } status ? Results.Ok(status) : Results.NotFound();
+        }).AddEndpointFilter<LeviathanCsrfFilter>();
         group.MapPost("/unpair", async (DesktopUnpairRequest request, HttpContext http, HeliosLocalAi local, LeviathanDbContext db, DesktopAuthorConnections connections, CancellationToken ct) => {
             var actor = await Actor(http, local, db, ct); if (actor is null) return Results.Forbid();
             connections.Revoke(request.Token ?? "", actor.UserId.Value); return Results.NoContent();
@@ -131,7 +136,8 @@ public static class LocalAuthorEndpoints
                 if (request.Agent == "codex")
                     await agent.Run(local.Read().CodexExecutable, request.Model, instructions, JsonSerializer.Serialize(request.Input), HeliosAuthorEndpoints.AuthorTools(), channel, lifetime.Token);
                 else
-                    await desktop.Run(request.PairingToken ?? "", actor.UserId.Value, request.Agent, instructions, JsonSerializer.Serialize(request.Input), HeliosAuthorEndpoints.AuthorTools(), channel, lifetime.Token);
+                    await desktop.Run(request.PairingToken ?? "", actor.UserId.Value, request.Agent,
+                        DesktopAuthorConnections.TaskContext(request, references, DateTimeOffset.UtcNow), HeliosAuthorEndpoints.AuthorTools(), channel, lifetime.Token);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -155,6 +161,7 @@ public sealed record DesktopUnpairRequest(string Token);
 internal sealed class LocalAuthorChannel(WebSocket socket, CancellationTokenSource lifetime) : IAuthorAgentChannel
 {
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> pending = new();
+    public string? EndReason { get; private set; }
     public async Task Event(object value, CancellationToken ct) => await socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(value).AsMemory(), WebSocketMessageType.Text, true, ct);
     public async Task<JsonElement> Receive(CancellationToken ct)
     {
@@ -172,7 +179,11 @@ internal sealed class LocalAuthorChannel(WebSocket socket, CancellationTokenSour
     {
         try { while (!lifetime.IsCancellationRequested) {
             var message = await Receive(lifetime.Token);
-            if (message.GetProperty("type").GetString() == "cancel") { lifetime.Cancel(); break; }
+            if (message.GetProperty("type").GetString() == "cancel") {
+                if (message.TryGetProperty("reason", out var reason) && reason.ValueKind == JsonValueKind.String)
+                    EndReason = reason.GetString() is { Length: > 0 } text ? text[..Math.Min(text.Length, 300)] : null;
+                lifetime.Cancel(); break;
+            }
             if (message.GetProperty("type").GetString() != "tool_result" || !pending.TryRemove(message.GetProperty("id").GetString()!, out var completion))
                 throw new LocalAiException("Unexpected tool response.");
             completion.TrySetResult(message.GetProperty("output"));

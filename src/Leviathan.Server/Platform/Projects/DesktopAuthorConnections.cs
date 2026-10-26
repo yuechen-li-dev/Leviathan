@@ -28,6 +28,8 @@ public sealed class DesktopAuthorConnections
 
     internal Pairing? Resolve(string token) => pairings.TryGetValue(Hash(token), out var pairing) && pairing.Expires > DateTimeOffset.UtcNow ? pairing : null;
     public DateTimeOffset? Expires(string token) => Resolve(token)?.Expires;
+    public object? Status(string token, string owner) => Resolve(token) is { } pairing && pairing.Owner == owner
+        ? new { lastSeen = pairing.LastSeen, activeTask = pairing.Active is not null, lastEnded = pairing.LastEnded } : null;
     public bool Revoke(string token, string owner)
     {
         var key = Hash(token);
@@ -35,19 +37,67 @@ public sealed class DesktopAuthorConnections
         pairing.Active?.Cancel(); return true;
     }
 
-    public async Task Run(string token, string owner, string client, string instructions, string input, JsonElement[] tools, IAuthorAgentChannel channel, CancellationToken ct)
+    public async Task Run(string token, string owner, string client, JsonElement context, JsonElement[] tools, IAuthorAgentChannel channel, CancellationToken ct)
     {
         var pairing = Resolve(token);
         if (pairing is null || pairing.Owner != owner || pairing.Client != client) throw new LocalAiException("Desktop connection expired or belongs to another session. Connect this client again.");
-        var task = new Candidate(instructions, input, tools, channel, ct);
+        var task = new Candidate(context, tools, channel, ct);
         if (Interlocked.CompareExchange(ref pairing.Active, task, null) is not null) throw new LocalAiException("This desktop connection already has an active task.");
+        pairing.LastEnded = null;
         try {
-            await channel.Event(new { type = "activity", text = $"Waiting for {Label(client)}. Use the Helios MCP tools in your native chat." }, ct);
+            await channel.Event(new { type = "activity", text = $"Waiting for {Label(client)}. Ask it to carry out the task with the Helios tools." }, ct);
             var summary = await task.Completion.Task.WaitAsync(ct);
             ct.ThrowIfCancellationRequested();
             await channel.Event(new { type = "complete", text = summary }, ct);
         }
-        finally { Interlocked.CompareExchange(ref pairing.Active, null, task); task.Close(); }
+        finally {
+            // The next tool call from the native chat explains what happened instead of a bare "no task".
+            if (!task.Completion.Task.IsCompletedSuccessfully)
+                pairing.LastEnded = channel.EndReason is { Length: > 0 } reason ? reason.TrimEnd() + (reason.TrimEnd().EndsWith('.') ? "" : ".")
+                    : "Helios stopped the task before finish_task (Stop agent, a closed tab or a lost connection). Candidate changes were not applied.";
+            Interlocked.CompareExchange(ref pairing.Active, null, task); task.Close();
+        }
+    }
+
+    /// <summary>
+    /// What task_context returns: the request, files and host policy as plain JSON fields, so a native agent
+    /// reads them directly instead of parsing a serialized blob out of an instruction string.
+    /// </summary>
+    internal static JsonElement TaskContext(HeliosAuthorRequest request, IEnumerable<EngineeringReference> references, DateTimeOffset now)
+    {
+        static string? Text(JsonElement item) => item.ValueKind == JsonValueKind.Object && item.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null;
+        static string? Role(JsonElement item) => item.ValueKind == JsonValueKind.Object && item.TryGetProperty("role", out var r) && r.ValueKind == JsonValueKind.String ? r.GetString() : null;
+        var input = request.Input ?? [];
+        var last = input.Length > 0 && Role(input[^1]) == "user" ? Text(input[^1])?.Trim() : null;
+        var task = string.IsNullOrEmpty(last) ? null : last;
+        // Earlier turns of this Helios conversation; host tool logs are evidence of an older candidate, not context.
+        var earlier = input.Take(input.Length - (task is null && last is null ? 0 : 1))
+            .Select(i => (role: Role(i), content: Text(i))).Where(i => i.role is "user" or "assistant" && !string.IsNullOrWhiteSpace(i.content) && !i.content!.StartsWith("Tool ", StringComparison.Ordinal))
+            .Select(i => new { i.role, content = i.content!.Length > 2000 ? i.content[..2000] + "…" : i.content }).ToArray();
+        var minutes = request.BudgetMinutes is > 0 and <= 60 ? request.BudgetMinutes.Value : (int?)null;
+        var review = request.ApplyMode == "review";
+        return JsonSerializer.SerializeToElement(new {
+            task,
+            taskSource = task is null ? "native-chat" : "helios",
+            taskNote = task is null ? "The user started this Helios task without typing it there. Their request is in your chat; carry that out." : null,
+            requirements = string.IsNullOrWhiteSpace(request.Requirements) ? null : request.Requirements,
+            project = new { root = request.Root, files = request.Documents.Select(path => new { path, sha256 = request.DocumentHashes?.GetValueOrDefault(path) }) },
+            application = review
+                ? "review: after finish_task the user reviews the source diff in Helios and applies or discards it."
+                : "auto: after finish_task Helios rebuilds the candidate and applies it, with a checkpoint saved first so the user can roll back.",
+            budget = minutes is null ? null : new { minutes, endsAt = now.AddMinutes(minutes.Value),
+                note = "Helios discards the candidate if the budget runs out before finish_task. Finish with what builds, then iterate in a new task." },
+            references = references.Select(r => new { r.Id, r.Name, r.Sha256, tables = r.Tables.Select(t => new { t.Name, t.Columns }) }),
+            earlierConversation = earlier,
+            rules = HeliosAuthorEndpoints.Instructions.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            workflow = new[] {
+                "read_file the root (and other files) before editing; edit_file replaces one exact unique snippet and reports syntax problems at once.",
+                "schema lists constructs with one-line examples; describe_construct gives one construct's fields. Do not guess syntax.",
+                "build returns a summary: diagnostics, bounds, bodies with their features, and faces. Check that every requested feature appears.",
+                "measure takes rays against the built model; use the occurrenceId and faceId from build.",
+                "finish_task with a short summary once the current candidate has built.",
+            },
+        });
     }
 
     internal sealed class Pairing(string owner, string client)
@@ -56,9 +106,13 @@ public sealed class DesktopAuthorConnections
         public string Client { get; } = client;
         public DateTimeOffset Expires { get; } = DateTimeOffset.UtcNow.AddHours(8);
         public Candidate? Active;
+        /// <summary>Why the previous task ended without finish_task, for the next native tool call.</summary>
+        public string? LastEnded;
+        /// <summary>Last authenticated MCP request from the native client (tools/list counts).</summary>
+        public DateTimeOffset? LastSeen;
     }
 
-    internal sealed class Candidate(string instructions, string input, JsonElement[] schemas, IAuthorAgentChannel channel, CancellationToken ct)
+    internal sealed class Candidate(JsonElement context, JsonElement[] schemas, IAuthorAgentChannel channel, CancellationToken ct)
     {
         public TaskCompletionSource<string> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly CancellationTokenSource lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -74,9 +128,11 @@ public sealed class DesktopAuthorConnections
             var acquired = false;
             try {
                 await gate.WaitAsync(token); acquired = true;
-                if (Volatile.Read(ref closed) != 0 || Completion.Task.IsCompleted) return Result(false, "This candidate task has ended. Start a new task in Helios.");
-                if (name == "task_context") return Result(true, new { instructions, conversation = input,
-                    workflow = "Use candidate tools, build successfully, then call finish_task. The Helios host owns application and checkpoints." });
+                if (Volatile.Read(ref closed) != 0 || Completion.Task.IsCompleted)
+                    return Result(false, Completion.Task.IsCompletedSuccessfully
+                        ? "This task was already submitted with finish_task. For more changes, ask the user to select Start desktop task in Helios again; the request can stay in this chat."
+                        : "This Helios task has ended and its candidate changes were discarded. Ask the user to start a new desktop task in Helios.");
+                if (name == "task_context") return Result(true, context);
                 if (name == "finish_task") {
                     if (!built) return Result(false, "Build the current candidate successfully before finishing this task.");
                     if (!arguments.TryGetProperty("summary", out var summary) || summary.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(summary.GetString()) || summary.GetString()!.Length > 16000)
@@ -144,7 +200,9 @@ public sealed class DesktopAuthorConnections
                 var http = context.Services!.GetRequiredService<IHttpContextAccessor>().HttpContext;
                 var pairing = http?.Items[typeof(Pairing)] as Pairing;
                 var task = pairing?.Active;
-                if (task is null) return Result(false, "No active Helios candidate. Start a desktop task in the Helios AI Author panel.");
+                if (task is null) return Result(false, pairing?.LastEnded is { } ended
+                    ? $"The last Helios task ended: {ended} Ask the user to select Start desktop task in Helios; they do not need to retype the request."
+                    : "No active Helios task. Ask the user to select Start desktop task in the Helios AI Author panel; the request can stay in this chat.");
                 var parameters = context.Params!;
                 var arguments = parameters.Arguments ?? new Dictionary<string, JsonElement>();
                 if (ArgumentError(parameters.Name, arguments) is { } problem) return Result(false, problem);
@@ -164,7 +222,7 @@ public sealed class DesktopAuthorConnections
                 if (!local.IsLocal(http) || pairing is null || (origin.Length > 0 && (!Uri.TryCreate(origin, UriKind.Absolute, out var uri) || !uri.IsLoopback))) {
                     http.Response.StatusCode = 401; return;
                 }
-                http.Items[typeof(Pairing)] = pairing;
+                http.Items[typeof(Pairing)] = pairing; pairing.LastSeen = DateTimeOffset.UtcNow;
             }
             await next(http);
         });

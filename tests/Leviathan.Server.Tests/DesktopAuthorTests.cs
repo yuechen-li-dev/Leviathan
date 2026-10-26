@@ -6,6 +6,7 @@ namespace Leviathan.Server.Tests;
 
 public sealed class DesktopAuthorTests
 {
+    private static readonly JsonElement Empty = JsonSerializer.SerializeToElement(new { });
     private sealed class Channel(bool block = false) : IAuthorAgentChannel
     {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -23,11 +24,11 @@ public sealed class DesktopAuthorTests
         var connections = new DesktopAuthorConnections(); var channel = new Channel(); var ct = TestContext.Current.CancellationToken;
         var pairing = connections.Pair("owner", "antigravity");
         Assert.Equal(pairing, connections.Pair("owner", "antigravity", pairing));
-        await Assert.ThrowsAsync<LocalAiException>(() => connections.Run(pairing, "other", "antigravity", "", "", HeliosAuthorEndpoints.Tools, channel, ct));
-        await Assert.ThrowsAsync<LocalAiException>(() => connections.Run(pairing, "owner", "claude-code", "", "", HeliosAuthorEndpoints.Tools, channel, ct));
-        var running = connections.Run(pairing, "owner", "antigravity", "", "", HeliosAuthorEndpoints.Tools, channel, ct);
+        await Assert.ThrowsAsync<LocalAiException>(() => connections.Run(pairing, "other", "antigravity", Empty, HeliosAuthorEndpoints.Tools, channel, ct));
+        await Assert.ThrowsAsync<LocalAiException>(() => connections.Run(pairing, "owner", "claude-code", Empty, HeliosAuthorEndpoints.Tools, channel, ct));
+        var running = connections.Run(pairing, "owner", "antigravity", Empty, HeliosAuthorEndpoints.Tools, channel, ct);
         Assert.False(connections.Revoke(pairing, "other"));
-        await Assert.ThrowsAsync<LocalAiException>(() => connections.Run(pairing, "owner", "antigravity", "", "", HeliosAuthorEndpoints.Tools, channel, ct));
+        await Assert.ThrowsAsync<LocalAiException>(() => connections.Run(pairing, "owner", "antigravity", Empty, HeliosAuthorEndpoints.Tools, channel, ct));
         Assert.True(connections.Revoke(pairing, "owner"));
         await Assert.ThrowsAsync<LocalAiException>(() => running);
         Assert.Null(connections.Resolve(pairing));
@@ -36,7 +37,7 @@ public sealed class DesktopAuthorTests
     public async Task Current_candidate_must_build_and_edits_invalidate_finish_admission()
     {
         var channel = new Channel(); var ct = TestContext.Current.CancellationToken; var empty = JsonSerializer.SerializeToElement(new { });
-        var candidate = new DesktopAuthorConnections.Candidate("Keep intent", "Task", HeliosAuthorEndpoints.Tools, channel, ct);
+        var candidate = new DesktopAuthorConnections.Candidate(Empty, HeliosAuthorEndpoints.Tools, channel, ct);
         try {
             var finish = JsonSerializer.SerializeToElement(new { summary = "Done" });
             Assert.True((await candidate.Invoke("finish_task", finish, ct)).IsError);
@@ -55,7 +56,7 @@ public sealed class DesktopAuthorTests
         var ct = TestContext.Current.CancellationToken;
         using var request = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var channel = new Channel(true);
-        var candidate = new DesktopAuthorConnections.Candidate("", "", HeliosAuthorEndpoints.Tools, channel, ct);
+        var candidate = new DesktopAuthorConnections.Candidate(Empty, HeliosAuthorEndpoints.Tools, channel, ct);
         try {
             var pending = candidate.Invoke("build", JsonSerializer.SerializeToElement(new { }), request.Token);
             await channel.Entered.Task.WaitAsync(ct); request.Cancel();
@@ -85,5 +86,48 @@ public sealed class DesktopAuthorTests
             var required = tool.InputSchema.TryGetProperty("required", out var r) ? r.EnumerateArray().Select(x => x.GetString()!).ToArray() : [];
             Assert.Null(DesktopAuthorConnections.ArgumentError(tool.Name, required.ToDictionary(k => k, _ => JsonSerializer.SerializeToElement("x"))));
         }
+    }
+    [Fact]
+    public void Task_context_is_structured_and_reads_a_task_typed_only_in_the_native_chat()
+    {
+        HeliosAuthorRequest Request(params object[] input) => new("", "part.firmament", ["part.firmament", "lib.firmament"], "",
+            input.Select(i => JsonSerializer.SerializeToElement(i)).ToArray(), new() { ["part.firmament"] = "abc" }, ApplyMode: "auto", BudgetMinutes: 20);
+        var now = DateTimeOffset.Parse("2026-10-26T12:00:00Z");
+        var typed = DesktopAuthorConnections.TaskContext(Request(new { role = "user", content = "First" }, new { role = "assistant", content = "Tool build: {}" },
+            new { role = "assistant", content = "Done first" }, new { role = "user", content = " Add holes " }), [], now);
+        Assert.Equal("Add holes", typed.GetProperty("task").GetString());
+        Assert.Equal("helios", typed.GetProperty("taskSource").GetString());
+        Assert.Equal(JsonValueKind.Null, typed.GetProperty("requirements").ValueKind);
+        Assert.Equal(["part.firmament", "lib.firmament"], typed.GetProperty("project").GetProperty("files").EnumerateArray().Select(f => f.GetProperty("path").GetString()));
+        Assert.Equal("abc", typed.GetProperty("project").GetProperty("files")[0].GetProperty("sha256").GetString());
+        Assert.StartsWith("auto:", typed.GetProperty("application").GetString());
+        Assert.Equal(now.AddMinutes(20), typed.GetProperty("budget").GetProperty("endsAt").GetDateTimeOffset());
+        // Earlier turns stay readable; host tool logs are dropped.
+        Assert.Equal(["First", "Done first"], typed.GetProperty("earlierConversation").EnumerateArray().Select(t => t.GetProperty("content").GetString()));
+        Assert.Contains(typed.GetProperty("rules").EnumerateArray(), r => r.GetString()!.StartsWith("Do not claim edits", StringComparison.Ordinal));
+
+        var chat = DesktopAuthorConnections.TaskContext(Request(new { role = "user", content = "" }) with { ApplyMode = "review", BudgetMinutes = null }, [], now);
+        Assert.Equal(JsonValueKind.Null, chat.GetProperty("task").ValueKind);
+        Assert.Equal("native-chat", chat.GetProperty("taskSource").GetString());
+        Assert.StartsWith("review:", chat.GetProperty("application").GetString());
+        Assert.Equal(JsonValueKind.Null, chat.GetProperty("budget").ValueKind);
+        Assert.Empty(chat.GetProperty("earlierConversation").EnumerateArray());
+    }
+    [Fact]
+    public async Task A_task_that_ends_without_finish_leaves_its_reason_for_the_native_client()
+    {
+        var connections = new DesktopAuthorConnections(); var ct = TestContext.Current.CancellationToken;
+        var pairing = connections.Pair("owner", "claude-code");
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var running = connections.Run(pairing, "owner", "claude-code", Empty, HeliosAuthorEndpoints.Tools, new Ended(), stop.Token);
+        stop.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running);
+        Assert.Equal("Agent time budget reached.", connections.Resolve(pairing)!.LastEnded);
+    }
+    private sealed class Ended : IAuthorAgentChannel
+    {
+        public Task Event(object value, CancellationToken ct) => Task.CompletedTask;
+        public Task<JsonElement> Invoke(string name, JsonElement arguments, CancellationToken ct) => throw new NotSupportedException();
+        public string? EndReason => "Agent time budget reached.";
     }
 }
